@@ -1,0 +1,56 @@
+name: Build X1605VA Assistant
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Projects/ASUS/X1605VAAssistant/**'
+      - '.github/workflows/x1605va-assistant.yml'
+      - 'install-assistant.sh'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: x1605va-assistant-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: macos-26-intel
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: Projects/ASUS/X1605VAAssistant
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build tools
+        run: |
+          command -v iasl >/dev/null || brew install acpica
+          mkdir -p Vendor
+          git clone --filter=blob:none https://github.com/acidanthera/MacKernelSDK.git Vendor/MacKernelSDK
+          git -C Vendor/MacKernelSDK checkout 3f750085caa17ec3a7880f11c11bf4f48cd6a164
+      - name: Test input-volume behavior
+        run: ./test.sh
+      - name: Build menu-bar app and EFI payload
+        run: ./build.sh
+      - name: Verify build
+        run: |
+          codesign --verify --strict --deep "build/X1605VA Assistant.app"
+          plutil -lint "build/X1605VA Assistant.app/Contents/Info.plist"
+          test ! -d "build/X1605VA Assistant.app/Contents/PlugIns"
+          python3 Tests/package-test.py
+          test -f "build/X1605VA Assistant.app/Contents/Resources/Assets.car"
+          xcrun assetutil --info "build/X1605VA Assistant.app/Contents/Resources/Assets.car" > build/icon/compiled-info.json
+          python3 -c 'import json; a=json.load(open("build/icon/compiled-info.json")); assert any("iconstack" in str(v).lower() for v in a), "No compiled Icon Composer stack"; assert any(v.get("Name") == "Graphite" for v in a), "No compiled graphite accent"'
+          ./Icon/build-icon.sh build/artwork-check --artwork-only
+      - name: Publish tested prerelease
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' Agent/App-Info.plist)
+          tag="x1605va-assistant-v$version"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Source release $tag already exists."
+            exit 0
+          fi
+          printf '%s\n' 'Build and install locally using the [one-command installer](https://github.com/samuelnotfound/Asus-X1605VA-Hackintosh/tree/main/Projects/ASUS/X1605VAAssistant/Downloads). The icon is built from source artwork. Adds a Screen Brightness slider for the built-in panel using XeShim.' > build/RELEASE-NOTES.md
+          gh release create "$tag" --prerelease --target "$GITHUB_SHA" --title "X1605VA Assistant $version" --notes-file build/RELEASE-NOTES.md

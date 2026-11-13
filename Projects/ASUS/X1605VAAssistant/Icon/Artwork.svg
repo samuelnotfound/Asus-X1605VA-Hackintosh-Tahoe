@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#35373c"/>
+      <stop offset="1" stop-color="#141519"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#53555b"/>
+      <stop offset="1" stop-color="#24252a"/>
+    </linearGradient>
+    <linearGradient id="lamp" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#ff8338"/>
+      <stop offset="1" stop-color="#f45b0e"/>
+    </linearGradient>
+  </defs>
+  <rect x="55" y="55" width="914" height="914" rx="206" fill="url(#tile)" stroke="url(#rim)" stroke-width="10"/>
+  <rect x="175" y="194" width="204" height="204" rx="39" fill="url(#lamp)" stroke="#ffa56d" stroke-width="4"/>
+</svg>

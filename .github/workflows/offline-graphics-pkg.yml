@@ -1,0 +1,28 @@
+name: Build offline Iris Xe package
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: macos-26-intel
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Build the graphics package
+        run: |
+          for script in install.sh macos/build-offline-pkg.sh macos/pkg-scripts/{preinstall,postinstall}; do
+            zsh -n "$script"
+          done
+          zsh macos/build-offline-pkg.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ASUS-X1605VA-IrisXe-Offline
+          path: dist/ASUS-X1605VA-IrisXe-Offline.pkg
+          if-no-files-found: error
+          retention-days: 7

@@ -1,0 +1,5 @@
+# Preserve imported EFI bytes, including signed kext metadata, on Windows.
+EFI/** -text
+*.sh text eol=lf
+*.ps1 text eol=lf
+*.md text eol=lf
