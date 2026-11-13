@@ -88,7 +88,15 @@
 			</dict>
 			<dict>
 				<key>Comment</key>
-				<string>Cosmetic, F9 mute LED switch. It does not mute - paired with _Q16 to XQ16</string>
+				<string>Fn+F6 enable/disable trackpad - paired with _Q12 to XQ12 (requires AsusSMC)</string>
+				<key>Enabled</key>
+				<true/>
+				<key>Path</key>
+				<string>SSDT-FNF6.aml</string>
+			</dict>
+			<dict>
+				<key>Comment</key>
+				<string>Fn+F9 mute LED switch. It does not mute - paired with _Q16 to XQ16 (Cosmetic)</string>
 				<key>Enabled</key>
 				<false/>
 				<key>Path</key>
@@ -298,36 +306,6 @@
 				<key>BaseSkip</key>
 				<integer>0</integer>
 				<key>Comment</key>
-				<string>_Q16 to XQ16 - paired with SSDT-F9LR</string>
-				<key>Count</key>
-				<integer>1</integer>
-				<key>Enabled</key>
-				<false/>
-				<key>Find</key>
-				<data>FB1fUTE2AKAUQVRLUF5eXl4uQVRLRElBTkUKfKQA</data>
-				<key>Limit</key>
-				<integer>0</integer>
-				<key>Mask</key>
-				<data></data>
-				<key>OemTableId</key>
-				<data>Tm90ZWJvb2s=</data>
-				<key>Replace</key>
-				<data>FB1YUTE2AKAUQVRLUF5eXl4uQVRLRElBTkUKfKQA</data>
-				<key>ReplaceMask</key>
-				<data></data>
-				<key>Skip</key>
-				<integer>0</integer>
-				<key>TableLength</key>
-				<integer>620086</integer>
-				<key>TableSignature</key>
-				<data>RFNEVA==</data>
-			</dict>
-			<dict>
-				<key>Base</key>
-				<string></string>
-				<key>BaseSkip</key>
-				<integer>0</integer>
-				<key>Comment</key>
 				<string>KBLU to XBLU - paired with  SSDT-KBLU</string>
 				<key>Count</key>
 				<integer>1</integer>
@@ -343,6 +321,66 @@
 				<data>Tm90ZWJvb2s=</data>
 				<key>Replace</key>
 				<data>FCZYQkxVAKAfQVRLUHtLQkxDCoBhoBFhXl5eXi5BVEtESUFORQrH</data>
+				<key>ReplaceMask</key>
+				<data></data>
+				<key>Skip</key>
+				<integer>0</integer>
+				<key>TableLength</key>
+				<integer>620086</integer>
+				<key>TableSignature</key>
+				<data>RFNEVA==</data>
+			</dict>
+			<dict>
+				<key>Base</key>
+				<string></string>
+				<key>BaseSkip</key>
+				<integer>0</integer>
+				<key>Comment</key>
+				<string>_Q12 to XQ12 - paired with  SSDT-FNF6</string>
+				<key>Count</key>
+				<integer>1</integer>
+				<key>Enabled</key>
+				<true/>
+				<key>Find</key>
+				<data>X1ExMg==</data>
+				<key>Limit</key>
+				<integer>0</integer>
+				<key>Mask</key>
+				<data></data>
+				<key>OemTableId</key>
+				<data></data>
+				<key>Replace</key>
+				<data>WFExMg==</data>
+				<key>ReplaceMask</key>
+				<data></data>
+				<key>Skip</key>
+				<integer>0</integer>
+				<key>TableLength</key>
+				<integer>0</integer>
+				<key>TableSignature</key>
+				<data>RFNEVA==</data>
+			</dict>
+			<dict>
+				<key>Base</key>
+				<string></string>
+				<key>BaseSkip</key>
+				<integer>0</integer>
+				<key>Comment</key>
+				<string>_Q16 to XQ16 - paired with SSDT-F9LR</string>
+				<key>Count</key>
+				<integer>1</integer>
+				<key>Enabled</key>
+				<false/>
+				<key>Find</key>
+				<data>FB1fUTE2AKAUQVRLUF5eXl4uQVRLRElBTkUKfKQA</data>
+				<key>Limit</key>
+				<integer>0</integer>
+				<key>Mask</key>
+				<data></data>
+				<key>OemTableId</key>
+				<data>Tm90ZWJvb2s=</data>
+				<key>Replace</key>
+				<data>FB1YUTE2AKAUQVRLUF5eXl4uQVRLRElBTkUKfKQA</data>
 				<key>ReplaceMask</key>
 				<data></data>
 				<key>Skip</key>
