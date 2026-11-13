@@ -72,7 +72,7 @@
 			</dict>
 			<dict>
 				<key>Comment</key>
-				<string>Disable wi-fi card.</string>
+				<string>Disable wi-fi card</string>
 				<key>Enabled</key>
 				<true/>
 				<key>Path</key>
@@ -80,11 +80,19 @@
 			</dict>
 			<dict>
 				<key>Comment</key>
+				<string>Keyboard backlight</string>
+				<key>Enabled</key>
+				<true/>
+				<key>Path</key>
+				<string>SSDT-KBLU.aml</string>
+			</dict>
+			<dict>
+				<key>Comment</key>
 				<string>Cosmetic, F9 mute LED switch. It does not mute - paired with _Q16 to XQ16</string>
 				<key>Enabled</key>
 				<false/>
 				<key>Path</key>
-				<string>SSDT-F9LED.aml</string>
+				<string>SSDT-F9LR.aml</string>
 			</dict>
 		</array>
 		<key>Delete</key>
@@ -290,7 +298,7 @@
 				<key>BaseSkip</key>
 				<integer>0</integer>
 				<key>Comment</key>
-				<string>_Q16 to XQ16 paired with SSDT-F9LED</string>
+				<string>_Q16 to XQ16 - paired with SSDT-F9LR</string>
 				<key>Count</key>
 				<integer>1</integer>
 				<key>Enabled</key>
@@ -305,6 +313,36 @@
 				<data>Tm90ZWJvb2s=</data>
 				<key>Replace</key>
 				<data>FB1YUTE2AKAUQVRLUF5eXl4uQVRLRElBTkUKfKQA</data>
+				<key>ReplaceMask</key>
+				<data></data>
+				<key>Skip</key>
+				<integer>0</integer>
+				<key>TableLength</key>
+				<integer>620086</integer>
+				<key>TableSignature</key>
+				<data>RFNEVA==</data>
+			</dict>
+			<dict>
+				<key>Base</key>
+				<string></string>
+				<key>BaseSkip</key>
+				<integer>0</integer>
+				<key>Comment</key>
+				<string>KBLU to XBLU - paired with  SSDT-KBLU</string>
+				<key>Count</key>
+				<integer>1</integer>
+				<key>Enabled</key>
+				<true/>
+				<key>Find</key>
+				<data>FCZLQkxVAKAfQVRLUHtLQkxDCoBhoBFhXl5eXi5BVEtESUFORQrH</data>
+				<key>Limit</key>
+				<integer>0</integer>
+				<key>Mask</key>
+				<data></data>
+				<key>OemTableId</key>
+				<data>Tm90ZWJvb2s=</data>
+				<key>Replace</key>
+				<data>FCZYQkxVAKAfQVRLUHtLQkxDCoBhoBFhXl5eXi5BVEtESUFORQrH</data>
 				<key>ReplaceMask</key>
 				<data></data>
 				<key>Skip</key>
@@ -514,7 +552,7 @@
 				<key>Comment</key>
 				<string></string>
 				<key>Enabled</key>
-				<false/>
+				<true/>
 				<key>ExecutablePath</key>
 				<string>Contents/MacOS/AsusSMC</string>
 				<key>MaxKernel</key>
@@ -1415,11 +1453,11 @@
 			<key>MaxBIOSVersion</key>
 			<false/>
 			<key>MLB</key>
-			<string>C02134501GUP8PGJA</string>
+			<string></string>
 			<key>ProcessorType</key>
 			<integer>3841</integer>
 			<key>ROM</key>
-			<data>EnDp/fMm</data>
+			<data></data>
 			<key>SpoofVendor</key>
 			<true/>
 			<key>SystemMemoryStatus</key>
@@ -1427,9 +1465,9 @@
 			<key>SystemProductName</key>
 			<string>MacBookPro16,2</string>
 			<key>SystemSerialNumber</key>
-			<string>C02G8MZ3ML7H</string>
+			<string></string>
 			<key>SystemUUID</key>
-			<string>8088BA77-D387-4823-94B9-C94111130A49</string>
+			<string></string>
 		</dict>
 		<key>UpdateDataHub</key>
 		<true/>
