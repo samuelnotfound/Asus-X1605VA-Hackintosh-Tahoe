@@ -1,4 +1,4 @@
-# ASUS Control 1.1.5
+# ASUS Control 1.1.6
 
 ASUS device settings in one macOS preference pane, with native SwiftUI grouped
 rows and three large **Performance / Standard / Whisper** profile cards.
@@ -57,6 +57,22 @@ regulation itself does not depend on the pane staying open.
 The Function keys selector requests Printed hotkeys or F1–F12 primary behavior
 through the existing firmware Fn-lock command. It is separate from fan control
 and does not add keyboard remapping or an Accessibility event tap.
+
+On the X1605VA BIOS305 profile, the firmware bit/parameter has inverted
+semantics: parameter0 selects printed actions; parameter1 selects ordinary
+F1–F12. A physical F7 comparison in both modes established that the previous
+labels were reversed. The extended driver now converts commands and readback
+consistently and advertises `FnLockSemanticsVersion=1` (feature revision4).
+
+The pane also translates Fn commands and cached status for the older custom
+API2 driver on this exact hardware profile. You can test this correction by
+replacing only the pane, without an EFI change or reboot. The compatibility
+conversion is skipped when the driver advertises normalized semantics, so the
+inversion is never applied twice or to unrelated ASUS profiles.
+
+The touchpad recovery hint follows active readback: **F6** in Printed hotkeys
+mode, **Fn+F6** in F1–F12 mode. The inline confirmation uses the same instruction.
+An unknown mode gets a generic touchpad-key hint rather than a guessed shortcut.
 
 A deliberate selection now sends one command even if the firmware's status
 mirror already shows that mode. The helper briefly polls readback after the
@@ -130,8 +146,8 @@ opted-in agent upgrades when the new pane opens. The build does not install it.
 
 Use one `AsusSMC.kext`, keeping the upstream **1.4.1** version and
 `com.hieplpvip.AsusSMC` identifier, with Lilu and VirtualSMC loaded first.
-ASUS Control1.1.5 and AsusSMC1.4.1 are separate projects with separate versions;
-`AsusControlAPIVersion=2` and feature revision3 identify the added interfaces.
+ASUS Control1.1.6 and AsusSMC1.4.1 are separate projects with separate versions;
+`AsusControlAPIVersion=2` and feature revision4 identify the added interfaces.
 
 The extended driver recognizes the supported DSDT wiring from cached table
 bytes. **No fan/settings boot arguments are required.** Recognition is currently

@@ -1,7 +1,7 @@
 # ASUS Control continuation — 2026-11-15
 
 Public repository `samuelnotfound/Asus-X1605VA-Hackintosh-Tahoe`.
-Project `Projects/ASUS/AsusControl`, pane/CLI/agent1.1.5. Keep software names
+Project `Projects/ASUS/AsusControl`, pane/CLI/agent1.1.6. Keep software names
 broad. Only X1605VA BIOS305 wiring is currently profiled. Do not publish private
 diagnostics, identities, raw ACPI tables, ignored backups or transcripts.
 
@@ -45,7 +45,7 @@ UI root/hosting background is transparent, grouped Form scroll background
 hidden, cards use translucent fills. Offscreen fixtures cover widths480/660/900
 and light/dark/material-colored hosts. Real Settings hosting remains user-test.
 
-##1.1.5 Fn and documentation update
+## 1.1.5 Fn and documentation update
 
 Card titles are exactly Performance, Standard, Whisper, keeping the descriptions.
 README now explains firmware RPM regulation versus userspace profile selection,
@@ -74,6 +74,36 @@ an unrelated USB keyboard fallback; do not copy USB reports to this PS/2 device.
 The extended1.4.1 driver from1.1.4 remains unchanged and optional for this pane
 update; no reboot/kext replacement is required to test1.1.5 with custom API2.
 
+## 1.1.6 confirmed Fn inversion and dynamic touchpad hint
+
+User first reported switching failed, then confirmed it works but in reverse.
+They compared the SAME F7 key: Printed hotkeys required Fn+F7 for the printed
+light action; F1–F12 used F7 alone. This establishes inverted physical semantics
+on this firmware, unlike the earlier ambiguous comparison using different keys.
+Firmware DEVS0/DSTS10000 therefore means printed actions; DEVS1/DSTS10001 means
+ordinary F1–F12. Do not globally invert every ASUS model.
+
+Driver hardware profile now has fnLockInverted=true; both parameter and readback
+are converted. Upstream module version stays1.4.1, API2, feature revision4.
+FnLockSemanticsVersion=1 advertises normalized command3/4 and FnLockHotkeys.
+Client compatibility swaps only3/4 and inverts Fn status for the exact known
+hardware label when that marker is absent. A normalized driver is never inverted
+again. This lets the new pane work with the running custom1.1.2 kext; no EFI
+replacement or reboot required for this test. Fn intent includes semantics1 to
+invalidate successes/failures interpreted under the old naming.
+
+Touchpad inline confirmation, footer and failure recovery hint follow active
+normalized readback: F6 for printed hotkeys, Fn+F6 for ordinary F1–F12. Unknown
+mode gets a generic touchpad-key hint. No UI redesign or additional mode row.
+
+Screenshot also showed the3s lock-busy warning. Subsequent live read-only state
+showed matching saved/applied revisions and no failures; user confirmed switching
+worked. Lock contention was not established as the cause of inversion and was
+not changed. lsof showed the pane host with the lock file open, not proof that
+it held a stuck flock. ps was denied; no bypass attempted. No live writes,
+installation, agent restart, keyboard interception or EFI modification performed.
+New mapping still requires a physical test using the updated pane.
+
 ## Driver source and build
 
 Separate AsusSMC checkout, branch
@@ -82,8 +112,8 @@ No published GitHub fork exists; do not claim one. Full diff is exported as
 `Driver/AsusSMC-device-settings.patch` and applied by build-driver.sh in isolation.
 Upstream MIT notices, identifier `com.hieplpvip.AsusSMC`, service and filename
 remain. Both MODULE_VERSION and CURRENT_PROJECT_VERSION stay upstream1.4.1.
-Settings API2 / feature revision3 identify added features, independently of
-ASUS Control1.1.5. MacKernelSDK/Lilu/VirtualSMC dependencies are pinned.
+Settings API2 / feature revision4 identify added features, independently of
+ASUS Control1.1.6. MacKernelSDK/Lilu/VirtualSMC dependencies are pinned.
 
 No settings/fan boot arguments required with this new driver. Cached DSDT bytes
 match conservative signatures for the known RPM, thermal and Fn wiring, not
@@ -108,7 +138,8 @@ enforcement. User confirms charging continued past80%. Context refresh is fixed,
 but actual enforcement remains unverified. Do not claim it physically fixed or
 guess undocumented0x80 encodings/registers. Test with charger connected over80%.
 
-Fn0x00100023 accepts exactDSTS10000/10001. DEVS0 normal/1 hotkeys returns1 even
+Fn0x00100023 accepts exactDSTS10000/10001. On this profile, DEVS0 means
+printed hotkeys and1 means F1–F12. DEVS returns1 even
 when its nested EC mailbox operation does not establish physical success. User
 reports intermittent behavior. Added diagnostics FnLockRaw, RequestedHotkeys and
 WriteAcknowledged do not fix this protocol. Session command from this sandbox

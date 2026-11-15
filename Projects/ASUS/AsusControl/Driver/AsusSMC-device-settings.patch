@@ -12,10 +12,10 @@ index 3406c5d..bbe9ec0 100644
 +/build-device-settings/
 diff --git a/AsusSMC/AsusControlProtocol.hpp b/AsusSMC/AsusControlProtocol.hpp
 new file mode 100644
-index 0000000..12c6544
+index 0000000..0417fa7
 --- /dev/null
 +++ b/AsusSMC/AsusControlProtocol.hpp
-@@ -0,0 +1,31 @@
+@@ -0,0 +1,32 @@
 +// ASUS Control protocol helpers. Copyright (c) 2026 samuelnotfound.
 +// MIT License; see LICENSE.md.
 +#pragma once
@@ -23,11 +23,12 @@ index 0000000..12c6544
 +
 +namespace AsusControl {
 +static constexpr uint32_t ControlAPIVersion = 2;
-+inline bool decodeFnLock(uint32_t raw, bool &hotkeys) {
++inline bool decodeFnLock(uint32_t raw, bool &hotkeys, bool inverted = false) {
 +    if (raw != 0x10000U && raw != 0x10001U) return false;
-+    hotkeys = (raw & 1U) != 0;
++    hotkeys = ((raw & 1U) != 0) != inverted;
 +    return true;
 +}
++inline uint32_t fnLockParameter(bool hotkeys, bool inverted) { return hotkeys != inverted ? 1U : 0U; }
 +inline bool devicePresent(uint32_t raw) {
 +    return raw != UINT32_MAX && raw != UINT32_MAX - 1 && (raw & 0x10000U);
 +}
@@ -48,7 +49,7 @@ index 0000000..12c6544
 +}
 +}
 diff --git a/AsusSMC/AsusSMC.cpp b/AsusSMC/AsusSMC.cpp
-index c3c3fc5..ff2164f 100755
+index c3c3fc5..2230e63 100755
 --- a/AsusSMC/AsusSMC.cpp
 +++ b/AsusSMC/AsusSMC.cpp
 @@ -6,6 +6,10 @@
@@ -71,7 +72,7 @@ index c3c3fc5..ff2164f 100755
  
      return true;
  }
-@@ -70,8 +76,41 @@ bool AsusSMC::start(IOService *provider) {
+@@ -70,8 +76,43 @@ bool AsusSMC::start(IOService *provider) {
  
      initALSDevice();
  
@@ -81,7 +82,9 @@ index c3c3fc5..ff2164f 100755
 +    asusControlEnabled = dsdt && AsusControl::matchesFirmware(
 +        static_cast<const uint8_t *>(dsdt->getBytesNoCopy()), dsdt->getLength());
 +    setProperty("AsusControlAutoDetected", asusControlEnabled);
-+    setProperty("AsusControlRevision", 3, 32);
++    setProperty("AsusControlRevision", 4, 32);
++    setProperty("FnLockSemanticsVersion", 1, 32);
++    setProperty("FnLockInverted", AsusControl::X1605VA305.fnLockInverted);
 +    setProperty("X1605VA-FanPatch", "1.0.0");
 +    if (asusControlEnabled) {
 +        // BIOS 305 WMI DSTS returns RPM/100; legacy TACH applies an inverse formula.
@@ -114,7 +117,7 @@ index c3c3fc5..ff2164f 100755
      initBattery();
  
      initVirtualKeyboard();
-@@ -112,6 +151,7 @@ bool AsusSMC::start(IOService *provider) {
+@@ -112,6 +153,7 @@ bool AsusSMC::start(IOService *provider) {
  }
  
  void AsusSMC::stop(IOService *provider) {
@@ -122,7 +125,7 @@ index c3c3fc5..ff2164f 100755
      if (poller) {
          poller->cancelTimeout();
      }
-@@ -123,6 +163,7 @@ void AsusSMC::stop(IOService *provider) {
+@@ -123,6 +165,7 @@ void AsusSMC::stop(IOService *provider) {
      }
      OSSafeReleaseNULL(workloop);
      OSSafeReleaseNULL(poller);
@@ -130,7 +133,7 @@ index c3c3fc5..ff2164f 100755
      OSSafeReleaseNULL(command_gate);
  
      _publishNotify->remove();
-@@ -384,7 +425,7 @@ void AsusSMC::initBattery() {
+@@ -384,7 +427,7 @@ void AsusSMC::initBattery() {
      }
  
      isBatteryRSOCAvailable = wmi_dev_is_present(ASUS_WMI_DEVID_RSOC);
@@ -139,7 +142,7 @@ index c3c3fc5..ff2164f 100755
          toggleBatteryConservativeMode(true);
      }
  }
-@@ -442,7 +483,6 @@ bool AsusSMC::refreshALS(bool post) {
+@@ -442,7 +485,6 @@ bool AsusSMC::refreshALS(bool post) {
  
      if (post) {
          VirtualSMCAPI::postInterrupt(SmcEventALSChange);
@@ -147,7 +150,7 @@ index c3c3fc5..ff2164f 100755
      }
  
      DBGLOG("als", "refreshALS lux %u", lux);
-@@ -450,7 +490,224 @@ bool AsusSMC::refreshALS(bool post) {
+@@ -450,7 +492,225 @@ bool AsusSMC::refreshALS(bool post) {
      return ret == kIOReturnSuccess;
  }
  
@@ -277,7 +280,7 @@ index c3c3fc5..ff2164f 100755
 +    bool hotkeys = false;
 +    const uint32_t fnRaw = static_cast<uint32_t>(wmi_get_devstate(AsusControl::X1605VA305.fnLock));
 +    setProperty("FnLockRaw", fnRaw, 32);
-+    fnLockAvailable = AsusControl::decodeFnLock(fnRaw, hotkeys);
++    fnLockAvailable = AsusControl::decodeFnLock(fnRaw, hotkeys, AsusControl::X1605VA305.fnLockInverted);
 +    setProperty("FnLockAvailable", fnLockAvailable);
 +    if (fnLockAvailable) setProperty("FnLockHotkeys", hotkeys);
 +    bool trackpad = false;
@@ -325,7 +328,8 @@ index c3c3fc5..ff2164f 100755
 +    }
 +    if (command <= 4) {
 +        if (!fnLockAvailable) return false;
-+        const bool acknowledged = wmi_evaluate_method(ASUS_WMI_METHODID_DEVS, AsusControl::X1605VA305.fnLock, command == 3 ? 1 : 0) == 1;
++        const bool acknowledged = wmi_evaluate_method(ASUS_WMI_METHODID_DEVS, AsusControl::X1605VA305.fnLock,
++            AsusControl::fnLockParameter(command == 3, AsusControl::X1605VA305.fnLockInverted)) == 1;
 +        setProperty("FnLockWriteAcknowledged", acknowledged);
 +        if (acknowledged) setProperty("FnLockRequestedHotkeys", command == 3);
 +        return acknowledged;
@@ -372,7 +376,7 @@ index c3c3fc5..ff2164f 100755
      uint32_t speed = 10000;
  
      if (isTACHAvailable) {
-@@ -809,8 +1066,6 @@ void AsusSMC::dispatchMessage(int message, void *data) {
+@@ -809,8 +1069,6 @@ void AsusSMC::dispatchMessage(int message, void *data) {
  }
  
  void AsusSMC::registerVSMC() {
@@ -381,7 +385,7 @@ index c3c3fc5..ff2164f 100755
      ALSSensor sensor {ALSSensor::Type::Unknown7, true, 6, false};
      ALSSensor noSensor {ALSSensor::Type::NoSensor, false, 0, false};
      SMCALSValue::Value emptyValue;
-@@ -861,7 +1116,7 @@ void AsusSMC::registerVSMC() {
+@@ -861,7 +1119,7 @@ void AsusSMC::registerVSMC() {
          0, SmcKeyTypeFpe2, new F0Ac(&currentFanSpeed),
          SMC_KEY_ATTRIBUTE_READ | SMC_KEY_ATTRIBUTE_FUNCTION));
  
@@ -390,7 +394,7 @@ index c3c3fc5..ff2164f 100755
      lilu_os_strncpy(desc.strFunction, "System Fan", DiagFunctionStrLen);
  
      VirtualSMCAPI::addKey(KeyF0ID, vsmcPlugin.data, VirtualSMCAPI::valueWithData(
-@@ -875,6 +1130,9 @@ void AsusSMC::registerVSMC() {
+@@ -875,6 +1133,9 @@ void AsusSMC::registerVSMC() {
      }
  
      qsort(const_cast<VirtualSMCKeyValue *>(vsmcPlugin.data.data()), vsmcPlugin.data.size(), sizeof(VirtualSMCKeyValue), VirtualSMCKeyValue::compare);
@@ -400,7 +404,7 @@ index c3c3fc5..ff2164f 100755
  }
  
  bool AsusSMC::vsmcNotificationHandler(void *sensors, void *refCon, IOService *vsmc, IONotifier *notifier) {
-@@ -889,8 +1147,11 @@ bool AsusSMC::vsmcNotificationHandler(void *sensors, void *refCon, IOService *vs
+@@ -889,8 +1150,11 @@ bool AsusSMC::vsmcNotificationHandler(void *sensors, void *refCon, IOService *vs
              self->poller = IOTimerEventSource::timerEventSource(self, [](OSObject *object, IOTimerEventSource *sender) {
                  auto ls = OSDynamicCast(AsusSMC, object);
                  if (ls) {
@@ -412,7 +416,7 @@ index c3c3fc5..ff2164f 100755
                  }
              });
  
-@@ -909,6 +1170,8 @@ bool AsusSMC::vsmcNotificationHandler(void *sensors, void *refCon, IOService *vs
+@@ -909,6 +1173,8 @@ bool AsusSMC::vsmcNotificationHandler(void *sensors, void *refCon, IOService *vs
                  return false;
              }
  
@@ -471,10 +475,10 @@ index 0c69ddb..2cc799d 100644
      uint32_t panelBrightnessLevel {16};
 diff --git a/AsusSMC/Models/X1605VA305.hpp b/AsusSMC/Models/X1605VA305.hpp
 new file mode 100644
-index 0000000..cc5e6df
+index 0000000..736c06b
 --- /dev/null
 +++ b/AsusSMC/Models/X1605VA305.hpp
-@@ -0,0 +1,51 @@
+@@ -0,0 +1,52 @@
 +// Confirmed firmware wiring for ASUS X1605VA BIOS 305. MIT License.
 +#pragma once
 +#include <stdint.h>
@@ -486,10 +490,11 @@ index 0000000..cc5e6df
 +    uint32_t fan, thermal, chargeLimit, fnLock;
 +    bool performanceOnBattery;
 +    uint32_t performanceMinimumBattery;
++    bool fnLockInverted;
 +};
 +static constexpr HardwareProfile X1605VA305 {
 +    "x1605va305", "ASUS X1605VA / BIOS 305", 0x00110013,
-+    0x00110019, 0x00120057, 0x00100023, false, 40
++    0x00110019, 0x00120057, 0x00100023, false, 40, true
 +};
 +// Match the cached firmware's actual method wiring, not a spoofed Mac SMBIOS.
 +// These short AML sequences describe the known fan/thermal/Fn implementations.
@@ -528,11 +533,11 @@ index 0000000..cc5e6df
 +}
 diff --git a/DEVICE-SETTINGS.md b/DEVICE-SETTINGS.md
 new file mode 100644
-index 0000000..8160c3d
+index 0000000..2fcc035
 --- /dev/null
 +++ b/DEVICE-SETTINGS.md
-@@ -0,0 +1,118 @@
-+# AsusSMC device settings — ASUS Control 1.1.4
+@@ -0,0 +1,121 @@
++# AsusSMC device settings — ASUS Control 1.1.6
 +
 +Based on `hieplpvip/AsusSMC` commit
 +`c15d2f297c86b65a3cb866cc2bcece595c136417`. Original MIT licensing and notices
@@ -556,8 +561,8 @@ index 0000000..8160c3d
 +SDK headers. Output: `build-device-settings/AsusSMC.kext`. Build runs decoder,
 +command-boundary, startup-contract and signature checks. It never installs or
 +loads the result. The module version remains upstream1.4.1, read from the
-+Xcode project; ASUS Control1.1.4 has separate userspace versioning. Settings
-+API2 / feature revision3 identify the added functions.
++Xcode project; ASUS Control1.1.6 has separate userspace versioning. Settings
++API2 / feature revision4 identify the added functions.
 +
 +The known firmware wiring is detected from cached DSDT signatures. No
 +fan/settings boot arguments are required. Only the known X1605VA BIOS305
@@ -629,8 +634,11 @@ index 0000000..8160c3d
 +  acknowledgement cache, not proof of charging enforcement. User observed
 +  charging above80%; resending on source/session changes needs physical testing.
 +  The24-hour full-charge timer lives in userspace.
-+- Fn lock `0x00100023`: accept only exact DSTS `0x10000` or `0x10001`; DEVS
-+  0 normal / 1 hotkeys. Other return patterns remain unavailable.
++- Fn lock `0x00100023`: accept only exact DSTS `0x10000` or `0x10001`.
++  BIOS305 is inverted: raw0/DEVS0 printed hotkeys, raw1/DEVS1 ordinary F1–F12.
++  The hardware profile converts both directions; FnLockHotkeys and commands3/4
++  expose normalized meaning. FnLockSemanticsVersion=1 prevents client double
++  inversion. Other return patterns remain unavailable.
 +- Keyboard `GKPC`/`SKPC` from existing SSDT; 0–100 cache, not measured light.
 +- Touchpad: typed Boolean GetTouchStatus message to exactly one whitelisted
 +  VoodooI2C touchpad service; writes replay ATKD `IANE(0x6B)`, the existing
@@ -681,10 +689,10 @@ index 0000000..05b1d1f
 +print('PASS: cached-table automatic matching, no control boot-argument gates, upstream version retained.')
 diff --git a/Tests/protocol.cpp b/Tests/protocol.cpp
 new file mode 100644
-index 0000000..91f982e
+index 0000000..d9b7b7f
 --- /dev/null
 +++ b/Tests/protocol.cpp
-@@ -0,0 +1,52 @@
+@@ -0,0 +1,57 @@
 +#include "../AsusSMC/AsusControlProtocol.hpp"
 +#include <cassert>
 +#include <cstdio>
@@ -712,6 +720,11 @@ index 0000000..91f982e
 +    assert(AsusControl::decodeFnLock(0x10000, hotkeys) && !hotkeys);
 +    assert(!AsusControl::decodeFnLock(0xfffffffe, hotkeys));
 +    assert(!AsusControl::decodeFnLock(0x10201, hotkeys));
++    assert(AsusControl::X1605VA305.fnLockInverted);
++    assert(AsusControl::decodeFnLock(0x10000, hotkeys, true) && hotkeys);
++    assert(AsusControl::decodeFnLock(0x10001, hotkeys, true) && !hotkeys);
++    assert(AsusControl::fnLockParameter(true,true)==0 && AsusControl::fnLockParameter(false,true)==1);
++    assert(AsusControl::fnLockParameter(true,false)==1 && AsusControl::fnLockParameter(false,false)==0);
 +    assert(!AsusControl::devicePresent(0xfffffffe));
 +    assert(AsusControl::devicePresent(0x00990200));
 +    assert(!AsusControl::validDeviceCommand(0));

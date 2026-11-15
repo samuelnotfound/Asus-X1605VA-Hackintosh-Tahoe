@@ -45,6 +45,10 @@ private struct SettingsScreen: View {
     private var hardware: [String:Any] { model.hardware }
     private var system: [String:Any] { model.system }
     private var preferences: [String:Any] { model.preferences }
+    private var touchpadRecovery: String {
+        guard model.flag(hardware,"FnLockAvailable") else { return "Use the touchpad key to turn it back on." }
+        return model.flag(hardware,"FnLockHotkeys") ? "Press F6 to turn it back on." : "Press Fn + F6 to turn it back on."
+    }
     var body: some View {
         VStack(spacing: 0) {
             Form {
@@ -135,7 +139,7 @@ private struct SettingsScreen: View {
                 })).disabled(!model.devices || !model.flag(hardware,"TrackpadControlAvailable"))
                 if confirmTouchpad {
                     VStack(alignment:.leading,spacing:8) {
-                        Text("Disable the touchpad? Press Fn + F6 to turn it back on.").foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)
+                        Text("Disable the touchpad? \(touchpadRecovery)").foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)
                         HStack {
                             Spacer()
                             Button("Cancel") { confirmTouchpad = false }
@@ -148,7 +152,7 @@ private struct SettingsScreen: View {
                     Text("F1–F12").tag(false)
                 }.disabled(!model.devices || !model.flag(hardware,"FnLockAvailable"))
             } header: { Text("Input Devices") } footer: {
-                Text("Hold Fn to use the other function-key behavior. If the touchpad is disabled, press Fn + F6 to enable it.").fixedSize(horizontal:false,vertical:true)
+                Text("Hold Fn to use the other function-key behavior. If the touchpad is disabled: \(touchpadRecovery)").fixedSize(horizontal:false,vertical:true)
             }
             Section {
                 Picker("Turn off when idle",selection:model.integer("BacklightSleepMode")) {

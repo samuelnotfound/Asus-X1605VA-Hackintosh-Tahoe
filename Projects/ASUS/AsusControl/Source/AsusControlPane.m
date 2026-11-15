@@ -170,7 +170,9 @@
         NSDictionary *hardware = AsusControlReadStatus();
         dispatch_async(dispatch_get_main_queue(), ^{
             self->_busy = NO; self->_hardware = hardware;
-            self->_lastError = confirmed ? nil : error.localizedDescription ?: @"The touchpad change was not confirmed. Press Fn + F6 to enable it.";
+            NSString *recovery = ![hardware[@"FnLockAvailable"] boolValue] ? @"Use the touchpad key to enable it." :
+                [hardware[@"FnLockHotkeys"] boolValue] ? @"Press F6 to enable it." : @"Press Fn + F6 to enable it.";
+            self->_lastError = confirmed ? nil : error.localizedDescription ?: [@"The touchpad change was not confirmed. " stringByAppendingString:recovery];
             [self displayStatus]; [self refresh];
         });
     });

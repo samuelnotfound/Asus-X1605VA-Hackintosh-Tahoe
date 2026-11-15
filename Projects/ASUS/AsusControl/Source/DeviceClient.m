@@ -34,6 +34,24 @@ NSString *AsusControlProfileName(NSInteger profile) {
     }
 }
 
+static BOOL legacyInvertedFn(NSDictionary *properties) {
+    return [properties[@"AsusControlHardwareProfile"] isEqual:@"ASUS X1605VA / BIOS 305"] &&
+        [properties[@"FnLockSemanticsVersion"] integerValue] < 1;
+}
+NSDictionary *AsusControlNormalizeFnStatus(NSDictionary *status) {
+    if (!legacyInvertedFn(status)) return status;
+    NSMutableDictionary *result = [status mutableCopy];
+    if (status[@"FnLockHotkeys"]) result[@"FnLockHotkeys"] = @(![status[@"FnLockHotkeys"] boolValue]);
+    if (status[@"FnLockRequestedHotkeys"]) result[@"FnLockRequestedHotkeys"] = @(![status[@"FnLockRequestedHotkeys"] boolValue]);
+    result[@"FnLockSemanticsVersion"] = @1;
+    result[@"FnLockInverted"] = @YES;
+    result[@"FnLockCompatibilityMapping"] = @YES;
+    return result;
+}
+uint32_t AsusControlDeviceCommandForHardware(uint32_t command, NSDictionary *properties) {
+    return legacyInvertedFn(properties) && (command == 3 || command == 4) ? 7 - command : command;
+}
+
 static NSDictionary *properties(io_service_t service) {
     CFMutableDictionaryRef values = NULL;
     if (IORegistryEntryCreateCFProperties(service, &values, kCFAllocatorDefault, 0) != KERN_SUCCESS)
@@ -61,12 +79,13 @@ NSDictionary *AsusControlReadStatus(void) {
         @"KeyboardControlAvailable", @"KeyboardPercent", @"KeyboardReadingValid", @"SettingsRefreshAvailable",
         @"AsusControlAPIVersion", @"AsusControlHardwareProfile", @"DeviceControlAllowed",
         @"AsusControlRevision", @"AsusControlAutoDetected", @"FnLockRaw", @"FnLockWriteAcknowledged", @"FnLockRequestedHotkeys",
+        @"FnLockSemanticsVersion", @"FnLockInverted",
         @"BatteryCareAvailable", @"ChargeLimitRequested", @"BatteryConservativeMode",
         @"FnLockAvailable", @"FnLockHotkeys", @"TrackpadControlAvailable", @"TrackpadReadingValid", @"TrackpadEnabled",
         @"PerformanceOnBattery", @"PerformanceMinimumBattery", @"FullSpeedOnBattery"];
     for (NSString *key in keys) if (values[key]) status[key] = values[key];
     status[@"ControlAPIVersion"] = values[@"AsusControlAPIVersion"] ?: values[@"X1605VA-ControlAPIVersion"] ?: @0;
-    return status;
+    return AsusControlNormalizeFnStatus(status);
 }
 
 static BOOL sendCommand(BOOL keyboard, BOOL refresh, BOOL device, uint32_t value, NSError **error) {
@@ -89,7 +108,8 @@ static BOOL sendCommand(BOOL keyboard, BOOL refresh, BOOL device, uint32_t value
     AsusControlDecodeNumber32(before[completed], &previous);
     uint32_t request;
     do { request = arc4random_uniform(INT32_MAX) + 1; } while (request == previous);
-    NSDictionary *command = device ? @{@"DeviceCommand": @(value), @"DeviceRequestID": @(request)} : refresh ? @{@"SettingsCommand": @1, @"SettingsRequestID": @(request)} : keyboard ? @{@"KeyboardPercent": @(value), @"KeyboardRequestID": @(request)} :
+    uint32_t wireValue = device ? AsusControlDeviceCommandForHardware(value, before) : value;
+    NSDictionary *command = device ? @{@"DeviceCommand": @(wireValue), @"DeviceRequestID": @(request)} : refresh ? @{@"SettingsCommand": @1, @"SettingsRequestID": @(request)} : keyboard ? @{@"KeyboardPercent": @(value), @"KeyboardRequestID": @(request)} :
         @{@"FanCommand": @(value), @"FanRequestID": @(request)};
     kern_return_t ret = kIOReturnBusy;
     // Competing pane/agent clients share one workloop queue. Retry only an

@@ -3,6 +3,6 @@
   "commit": "c15d2f297c86b65a3cb866cc2bcece595c136417",
   "driver_version": "1.4.1",
   "settings_api": 2,
-  "feature_revision": 3,
+  "feature_revision": 4,
   "patch": "AsusSMC-device-settings.patch"
 }

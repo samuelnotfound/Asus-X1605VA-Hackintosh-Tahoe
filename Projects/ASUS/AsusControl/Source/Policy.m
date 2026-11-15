@@ -28,7 +28,7 @@ NSString *AsusChargePolicyContext(NSDictionary *p, NSDictionary *h, NSDictionary
         h[@"DriverSessionID"] ?: h[@"DriverRegistryEntryID"] ?: @"unknown", system[@"PowerSourceKnown"] ? system[@"ACPower"] : @"unknown"];
 }
 NSString *AsusFnPolicyContext(NSDictionary *p, NSDictionary *h) {
-    return [NSString stringWithFormat:@"fn:%@:driver:%@", [p[@"FnHotkeys"] boolValue] ? @"hotkeys" : @"functions",
+    return [NSString stringWithFormat:@"fn:%@:semantics:1:driver:%@", [p[@"FnHotkeys"] boolValue] ? @"hotkeys" : @"functions",
         h[@"DriverSessionID"] ?: h[@"DriverRegistryEntryID"] ?: @"unknown"];
 }
 NSArray<NSDictionary *> *AsusPolicyActions(NSDictionary *p, NSDictionary *h,

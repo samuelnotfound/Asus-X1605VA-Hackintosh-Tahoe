@@ -4,7 +4,7 @@ Read `docs/DEVELOPMENT-CONTINUATION.md` before changing this repository.
 
 - This is the current public Tahoe repository. Never copy private diagnostics,
   credentials, identity values, EFI backups or chat transcripts here.
-- Active settings project: `Projects/ASUS/AsusControl`, version 1.1.5,
+- Active settings project: `Projects/ASUS/AsusControl`, version 1.1.6,
   displayed as ASUS Control. Keep it separate from deprecated Assistant code.
 - Use broad software names; board names belong in explicit hardware profiles
   and compatibility notes. Only X1605VA BIOS 305 is currently profiled.
@@ -16,8 +16,8 @@ Read `docs/DEVELOPMENT-CONTINUATION.md` before changing this repository.
   charging-limit row. No brightness slider, microphone or screen brightness.
 - Current scope: fan monitoring/modes, battery care/24h full charge,
   direct profiles, touchpad, Fn mode and backlight idle timeout. Preserve physical four-step keyboard-light cycling.
-- Pane, utility and optional login agent share VERSION (1.1.5). Keep AsusSMC's
-  upstream version1.4.1 unchanged. Added settings are API2 / feature revision3.
+- Pane, utility and optional login agent share VERSION (1.1.6). Keep AsusSMC's
+  upstream version1.4.1 unchanged. Added settings are API2 / feature revision4.
   Cached DSDT wiring detection replaces boot-argument requirements; no model
   detection based on spoofed SMBIOS. No new firmware discovery at boot.
 - Performance falls back to Standard on battery or <=40% charge; restore the
@@ -29,6 +29,12 @@ Read `docs/DEVELOPMENT-CONTINUATION.md` before changing this repository.
   Poll readback with a bounded delay; adopt late confirmation without resending.
   Fn intents/failures are scoped to driver session and desired mode. Do not
   equate the Fn acknowledgement or firmware mirror with physical key behavior.
+- Known X1605VA BIOS305 Fn mapping is inverted: firmware0 printed /1 F1–F12.
+  Normalize both readback and commands. New driver advertises
+  FnLockSemanticsVersion=1; compatibility mapping for old API2 drivers is scoped
+  to the exact hardware label and skipped for normalized drivers.
+- Touchpad recovery hints use active normalized Fn mode: F6 for printed
+  hotkeys, Fn+F6 for F1–F12. Keep inline confirmation and error hints consistent.
 - Battery Care requests must be refreshed on driver/power-source transitions.
   Cached acknowledgement does not prove charging stops; user observed >80%.
 - Keep the original AsusSMC identity/license. Export driver source changes from
