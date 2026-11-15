@@ -85,8 +85,8 @@ cause without matching symbols/evidence.
 Read-only inspection found the running AsusSMC is upstream 1.4.1. Mounted
 OPENCORE has that original kext and no X1605VA fan flags. SYSTEM contains the
 failing com.samuelnotfound.AsusSMC 1.0.0 and both fan flags. Its signature passes
-verification and its binary is an x86_64 kext bundle. No volume was modified.
-Preserve OPENCORE as the working boot option.
+verification and its binary is an x86_64 kext bundle. The initial inspection did not modify a volume. Preserve OPENCORE as the
+working boot option.
 
 1.0.1 removes keyboard-method discovery from start(), removes added settings
 reads from the periodic callback, and restores the original identifier.
@@ -111,7 +111,24 @@ Only after boot is established should post-login settings reads be tested: verif
 profile readback, keyboard percentage changes and physical key updates, then
 the preference pane in Tahoe System Settings. Offscreen loading does not prove
 System Settings hosting or hardware control. Sleep remains unresolved; do not
-claim this release fixes it. No live EFI was modified or new kext loaded.
+claim this release fixes it. No candidate kext was loaded.
 
 Build instructions are in the project README. GitHub Actions builds the pane
 and matching patched driver, but no prebuilt app/DMG download flow is added.
+
+## Approved recovery performed
+
+After the 1.0.1 candidate passed local and GitHub Actions checks, the user
+approved write access limited to SYSTEM's EFI/OC/Kexts directory. SYSTEM's
+AsusSMC.kext was restored to the existing upstream 1.4.1 copy from OPENCORE.
+A full file comparison confirmed the restored bundle matches that source.
+OPENCORE and both config.plist files were verified unchanged. The failed
+1.0.0 bundle and working 1.4.1 copy are backed up under the ignored
+build/Recovery/Boot-recovery-20261114 directory. Original 1.4.1 is unsigned;
+its exact bytes were preserved rather than re-signing it.
+
+The restored SYSTEM boot still needs user confirmation. Stock 1.4.1 does not
+include the custom fan/settings features. Candidate 1.0.1 remains uninstalled;
+do not automatically replace the restored driver with it. Code validation
+passed in Actions run 43673556607, source commit
+0013be873d70da437f8515a91dd9f41d5bf054d2. That is build/test evidence only.
