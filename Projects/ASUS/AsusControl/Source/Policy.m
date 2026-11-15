@@ -3,19 +3,16 @@
 
 NSDictionary *AsusDefaultPreferences(void) {
     return @{@"FanManaged":@NO, @"ManualProfile":@0, @"BatteryManaged":@NO, @"BatteryCare":@YES, @"FullChargeUntil":@0,
-        @"SplitProfiles":@NO, @"ACProfile":@0, @"BatteryProfile":@0,
-        @"FollowLowPower":@NO, @"FnManaged":@NO, @"FnHotkeys":@YES,
+        @"FnManaged":@NO, @"FnHotkeys":@YES,
         @"BacklightSleepMode":@0, @"BacklightTimeout":@60};
 }
 BOOL AsusNeedsAgent(NSDictionary *p) {
-    return [p[@"FanManaged"] boolValue] || [p[@"BatteryManaged"] boolValue] || [p[@"SplitProfiles"] boolValue] ||
-        [p[@"FollowLowPower"] boolValue] || [p[@"FnManaged"] boolValue] ||
+    return [p[@"FanManaged"] boolValue] || [p[@"BatteryManaged"] boolValue] || [p[@"FnManaged"] boolValue] ||
         [p[@"BacklightSleepMode"] integerValue] != 0;
 }
 NSInteger AsusEffectiveProfile(NSDictionary *p, NSDictionary *system) {
-    if ([p[@"FollowLowPower"] boolValue] && [system[@"LowPowerMode"] boolValue]) return 1;
     BOOL ac = [system[@"ACPower"] boolValue];
-    NSInteger profile = [p[[p[@"SplitProfiles"] boolValue] ? (ac ? @"ACProfile" : @"BatteryProfile") : @"ManualProfile"] integerValue];
+    NSInteger profile = [p[@"ManualProfile"] integerValue];
     if (profile < 0 || profile > 3) return 0;
     // This is a capability of the current hardware profile, not every ASUS.
     if (!ac && profile == 2 && ![system[@"PerformanceOnBattery"] boolValue]) return 0;
@@ -36,19 +33,20 @@ NSArray<NSDictionary *> *AsusPolicyActions(NSDictionary *p, NSDictionary *h,
         if (![state[@"ChargeIntent"] isEqual:intent])
             [actions addObject:@{@"Kind":@"device", @"Value":@(limit == 80 ? 1 : 2), @"IntentKey":@"ChargeIntent", @"Intent":intent}];
     }
-    if (([p[@"FanManaged"] boolValue] || [p[@"SplitProfiles"] boolValue] || [p[@"FollowLowPower"] boolValue]) && [h[@"ThermalProfileValid"] boolValue] && [system[@"PowerSourceKnown"] boolValue]) {
+    if ([p[@"FanManaged"] boolValue] && [h[@"ThermalProfileValid"] boolValue] && [system[@"PowerSourceKnown"] boolValue]) {
         NSInteger profile = AsusEffectiveProfile(p, system);
-        NSString *intent = [NSString stringWithFormat:@"profile:%d:%d:%ld", [system[@"ACPower"] boolValue], [system[@"LowPowerMode"] boolValue], (long)profile];
-        BOOL actualMatches = profile == 3 ? [h[@"FanRequestedMode"] integerValue] == 1 :
-            [h[@"ThermalProfile"] integerValue] == profile && [h[@"FanRequestedMode"] integerValue] != 1;
+        NSString *intent = [NSString stringWithFormat:@"profile:%ld", (long)profile];
+        BOOL actualMatches = h[@"FanRequestedMode"] && (profile == 3 ? [h[@"FanRequestedMode"] integerValue] == 1 :
+            [h[@"ThermalProfile"] integerValue] == profile && [h[@"FanRequestedMode"] integerValue] != 1);
         if (![state[@"ThermalIntent"] isEqual:intent] || !actualMatches)
-            [actions addObject:@{@"Kind":@"device", @"Value":@(profile == 3 ? 10 : 7 + profile), @"IntentKey":@"ThermalIntent", @"Intent":intent}];
+            [actions addObject:@{@"Kind":actualMatches ? @"remember" : @"device", @"Value":@(profile == 3 ? 10 : 7 + profile), @"IntentKey":@"ThermalIntent", @"Intent":intent}];
     }
     if ([p[@"FnManaged"] boolValue] && [h[@"FnLockAvailable"] boolValue]) {
         BOOL hotkeys = [p[@"FnHotkeys"] boolValue];
         NSString *intent = hotkeys ? @"fn:hotkeys" : @"fn:functions";
-        if (![state[@"FnIntent"] isEqual:intent])
-            [actions addObject:@{@"Kind":@"device", @"Value":@(hotkeys ? 3 : 4), @"IntentKey":@"FnIntent", @"Intent":intent}];
+        BOOL matches=[h[@"FnLockHotkeys"] boolValue]==hotkeys;
+        if (![state[@"FnIntent"] isEqual:intent] || !matches)
+            [actions addObject:@{@"Kind":matches ? @"remember" : @"device", @"Value":@(hotkeys ? 3 : 4), @"IntentKey":@"FnIntent", @"Intent":intent}];
     }
     NSInteger sleepMode = [p[@"BacklightSleepMode"] integerValue];
     NSInteger timeout = [p[@"BacklightTimeout"] integerValue];
@@ -86,6 +84,7 @@ BOOL AsusExecutePolicyActions(NSArray<NSDictionary *> *actions, NSMutableDiction
     AsusPolicySender sender, AsusPolicyReader reader, NSError **error) {
     for (NSDictionary *action in actions) {
         NSString *kind = action[@"Kind"];
+        if ([kind isEqual:@"remember"]) { state[action[@"IntentKey"]]=action[@"Intent"]; continue; }
         if ([kind isEqual:@"clear-dim"]) { [state removeObjectForKey:@"Dimmed"]; continue; }
         if (!sender([kind isEqual:@"keyboard"], [action[@"Value"] unsignedIntValue], error)) return NO;
         BOOL confirmed = NO;

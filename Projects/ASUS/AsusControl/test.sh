@@ -8,6 +8,9 @@ build/client-test
 xcrun clang -fobjc-arc -O2 -Wall -Wextra -Werror Tests/policy-test.m Source/Policy.m \
   -framework Foundation -o build/policy-test
 build/policy-test
+xcrun clang -fobjc-arc -O2 -Wall -Wextra -Werror Tests/session-test.m Source/PolicySession.m Source/Policy.m \
+  -framework Foundation -o build/session-test
+build/session-test
 xcrun clang -fobjc-arc -O2 -Wall -Wextra -Werror Tests/pane-test.m \
   -framework Cocoa -framework PreferencePanes -o build/pane-test
 build/pane-test "$PWD/build/ASUS Control.prefPane" "$PWD/build/previews"

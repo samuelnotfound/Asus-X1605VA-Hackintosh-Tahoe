@@ -10,12 +10,10 @@ private final class SettingsModel: ObservableObject {
     @Published var error = false
     @Published var busy = false
     @Published var version = ""
-    @Published var tab = 0
     weak var actions: AsusPaneActions?
     func flag(_ values: [String: Any], _ key: String) -> Bool { (values[key] as? NSNumber)?.boolValue ?? false }
     func number(_ values: [String: Any], _ key: String) -> Int { (values[key] as? NSNumber)?.intValue ?? 0 }
     var devices: Bool { !busy && flag(hardware, "DeviceControlAllowed") }
-    var mode: Int { (flag(preferences, "SplitProfiles") ? 1 : 0) + (flag(preferences, "FollowLowPower") ? 2 : 0) }
     func bool(_ key: String) -> Binding<Bool> {
         Binding(get: { self.flag(self.preferences,key) }, set: { self.actions?.changeSetting(key,value:NSNumber(value:$0)) })
     }
@@ -40,27 +38,6 @@ private final class SettingsModel: ObservableObject {
 }
 private func profileName(_ value: Int) -> String { ["Standard","Whisper","Performance","Full Speed"].indices.contains(value) ? ["Standard","Whisper","Performance","Full Speed"][value] : "Unavailable" }
 
-// Keep tab navigation as a standard AppKit segmented control. It embeds
-// cleanly in legacy PreferencePanes hosts, including offscreen host rendering.
-private struct SectionPicker: NSViewRepresentable {
-    @Binding var selection: Int
-    func makeCoordinator() -> Coordinator { Coordinator(self) }
-    func makeNSView(context: Context) -> NSSegmentedControl {
-        let view=NSSegmentedControl(labels:["Power","Input Devices","System Status"],trackingMode:.selectOne,target:context.coordinator,action:#selector(Coordinator.changed(_:)))
-        view.segmentDistribution = .fillEqually
-        view.setAccessibilityLabel("Settings section")
-        return view
-    }
-    func updateNSView(_ view:NSSegmentedControl,context:Context) {
-        view.selectedSegment=selection; context.coordinator.parent=self
-    }
-    final class Coordinator:NSObject {
-        var parent:SectionPicker
-        init(_ parent:SectionPicker) { self.parent=parent }
-        @objc func changed(_ sender:NSSegmentedControl) { parent.selection=sender.selectedSegment }
-    }
-}
-
 private struct SettingsScreen: View {
     @ObservedObject var model: SettingsModel
     @State private var confirmTouchpad = false
@@ -75,8 +52,6 @@ private struct SettingsScreen: View {
                 Text(model.version.replacingOccurrences(of:"ASUS Control ",with:""))
                     .font(.caption2).foregroundStyle(.tertiary)
             }.padding(.horizontal,20).padding(.top,16).padding(.bottom,12)
-            SectionPicker(selection:$model.tab)
-                .frame(height:24).padding(.horizontal,20).padding(.bottom,8)
             Form {
                 if !model.message.isEmpty && model.message != "Settings applied." {
                     Section {
@@ -90,61 +65,59 @@ private struct SettingsScreen: View {
                         }
                     }
                 }
-                if model.tab == 0 { power }
-                else if model.tab == 1 { input }
-                else { status }
-            }.formStyle(.grouped).id(model.tab)
+                power
+                input
+            }.formStyle(.grouped)
         }.frame(maxWidth:.infinity,maxHeight:.infinity).background(Color(nsColor:.windowBackgroundColor))
-    }
-    @ViewBuilder private func profiles(_ title: String,key: String,onAC: Bool? = nil) -> some View {
-        Picker(title,selection:model.integer(key)) {
-            ForEach(0..<4,id:\.self) { value in
-                if onAC != false || model.profileAllowed(value,onAC:false) {
-                    Text(profileName(value)).tag(value).disabled(!model.profileAllowed(value,onAC:onAC))
-                }
-            }
-        }.disabled(!model.devices || !model.flag(hardware,"ThermalProfileValid"))
     }
     private var power: some View {
         Group {
             Section {
+                HStack(spacing:12) {
+                    profileCard(2,title:"Performance",symbol:"speedometer",detail:"Prioritize cooling for demanding tasks.")
+                    profileCard(0,title:"Standard",symbol:"fan",detail:"Balance performance and fan noise.")
+                    profileCard(1,title:"Whisper",symbol:"leaf",detail:"Keep fan noise lower for lighter tasks.")
+                }.listRowInsets(EdgeInsets(top:0,leading:0,bottom:0,trailing:0)).listRowBackground(Color.clear)
+            } header: { Text("Fan Profile") }
+            Section {
+                Toggle("Full Speed",isOn:Binding(get:{ model.number(hardware,"FanRequestedMode") == 1 },set:{ enabled in
+                    let profile = enabled ? 3 : model.number(hardware,"ThermalProfile")
+                    model.actions?.changeSetting("QuickProfile",value:NSNumber(value:profile))
+                })).disabled(!model.devices || !model.profileAllowed(3))
                 LabeledContent("Fan speed",value:model.flag(hardware,"FanReadingValid") ? "\(model.number(hardware,"FanRPM")) RPM" : "Unavailable")
-                Picker("Profile switching",selection:Binding(get:{model.mode},set:{model.actions?.selectProfileMode($0)})) {
-                    Text("Manual").tag(0)
-                    Text("Power source").tag(1)
-                    Text("Low Power Mode").tag(2)
-                    Text("Power source & Low Power Mode").tag(3)
-                }.disabled(!model.devices)
-                if model.mode == 1 || model.mode == 3 {
-                    profiles("On power adapter",key:"ACProfile",onAC:true)
-                    profiles("On battery",key:"BatteryProfile",onAC:false)
-                } else {
-                    profiles(model.mode == 2 ? "Normal profile" : "Fan profile",key:"ManualProfile")
-                }
-                LabeledContent("Active profile",value:model.currentProfile)
-            } header: { Text("Fan") } footer: {
-                Text(fanHelp).fixedSize(horizontal:false,vertical:true)
+            } footer: {
+                Text("Profiles adjust fan speed automatically. Full Speed keeps the fan running at its full-speed setting.").fixedSize(horizontal:false,vertical:true)
             }
             Section {
                 Toggle("Battery Care",isOn:model.bool("BatteryCare")).disabled(!model.devices || !model.flag(hardware,"BatteryCareAvailable"))
                 Toggle("Full charging for 24 hours",isOn:Binding(get:{ fullCharging },set:{ model.actions?.changeSetting("FullCharge",value:NSNumber(value:$0)) }))
                     .disabled(!model.devices || !model.flag(hardware,"BatteryCareAvailable") || !model.flag(preferences,"BatteryCare"))
-                if let requested = hardware["ChargeLimitRequested"] as? NSNumber {
-                    LabeledContent("Requested charging limit",value:"\(requested.intValue)%")
-                }
             } header: { Text("Battery") } footer: {
                 Text(fullCharging ? "Charging to 100% is allowed until \(fullChargeEnd). Battery Care then returns to 80%." : "Battery Care limits charging to 80%. Temporarily allow 100% for 24 hours when you need a full charge.")
                     .fixedSize(horizontal:false,vertical:true)
             }
         }
     }
-    private var fanHelp: String {
-        var help = "Standard balances cooling and noise. Whisper favors quieter operation. Performance prioritizes cooling. Full Speed overrides the automatic fan policy."
-        if model.mode == 2 || model.mode == 3 { help += " Low Power Mode selects Whisper and restores your chosen profile when it turns off." }
-        if model.number(preferences,"ACProfile") == 2 || model.number(preferences,"ManualProfile") == 2 {
-            help += " On this device, Performance requires power adapter connection and more than 40% battery; Standard is used otherwise."
-        }
-        return help
+    private func profileCard(_ profile:Int,title:String,symbol:String,detail:String) -> some View {
+        let selected=model.flag(hardware,"ThermalProfileValid") && model.number(hardware,"ThermalProfile") == profile && model.number(hardware,"FanRequestedMode") != 1
+        return Button {
+            model.actions?.changeSetting("QuickProfile",value:NSNumber(value:profile))
+        } label: {
+            VStack(alignment:.leading,spacing:10) {
+                HStack(alignment:.top) {
+                    Image(systemName:symbol).font(.system(size:25,weight:.regular))
+                    Spacer(minLength:0)
+                    if selected { Image(systemName:"checkmark.circle.fill").font(.system(size:16)) }
+                }.foregroundStyle(selected ? Color.accentColor : Color.primary)
+                Text(title).font(.system(size:14,weight:.semibold)).foregroundStyle(.primary)
+                Text(detail).font(.system(size:12)).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)
+                Spacer(minLength:0)
+            }.padding(14).frame(maxWidth:.infinity,minHeight:154,maxHeight:154,alignment:.topLeading)
+                .background(selected ? Color.accentColor.opacity(0.10) : Color(nsColor:.controlBackgroundColor),in:RoundedRectangle(cornerRadius:12))
+                .overlay(RoundedRectangle(cornerRadius:12).stroke(selected ? Color.accentColor : Color(nsColor:.separatorColor),lineWidth:selected ? 2 : 1))
+                .contentShape(RoundedRectangle(cornerRadius:12))
+        }.buttonStyle(.plain).disabled(!model.devices || !model.profileAllowed(profile))
+            .accessibilityLabel("\(title) fan profile").accessibilityValue(selected ? "Selected" : "Not selected")
     }
     private var fullCharging: Bool { model.flag(preferences,"BatteryCare") && ((preferences["FullChargeUntil"] as? NSNumber)?.doubleValue ?? 0) > Date().timeIntervalSince1970 }
     private var fullChargeEnd: String { Date(timeIntervalSince1970:(preferences["FullChargeUntil"] as? NSNumber)?.doubleValue ?? 0).formatted(date:.abbreviated,time:.shortened) }
@@ -193,31 +166,7 @@ private struct SettingsScreen: View {
             }
         }
     }
-    private var status: some View {
-        Group {
-            Section("System") {
-                LabeledContent("CPU usage",value:percentage("CPUPercent"))
-                LabeledContent("Memory",value:memory)
-                LabeledContent("Battery",value:model.flag(system,"BatteryKnown") ? "\(model.number(system,"BatteryPercent"))%" : "Unavailable")
-                LabeledContent("Power source",value:model.flag(system,"PowerSourceKnown") ? (model.flag(system,"ACPower") ? "Power adapter" : "Battery") : "Unavailable")
-                LabeledContent("Uptime",value:"\(model.number(system,"Uptime") / 3600)h \((model.number(system,"Uptime") / 60) % 60)m")
-            }
-            Section("Storage") {
-                LabeledContent("Available",value:bytes("DiskFree"))
-                LabeledContent("Capacity",value:bytes("DiskTotal"))
-            }
-            Section {
-                Button("Open Activity Monitor") { model.actions?.openSystemTool("activity") }
-                Button("Open Storage Settings") { model.actions?.openSystemTool("storage") }
-            }
-        }
-    }
-    private func percentage(_ key: String) -> String { (system[key] as? NSNumber).map { String(format:"%.0f%%",$0.doubleValue) } ?? "Reading…" }
-    private func bytes(_ key: String) -> String { (system[key] as? NSNumber).map { ByteCountFormatter.string(fromByteCount:$0.int64Value,countStyle:.file) } ?? "Unavailable" }
-    private var memory: String {
-        guard let used=system["MemoryUsed"] as? NSNumber,let total=system["MemoryTotal"] as? NSNumber else { return "Unavailable" }
-        return "\(ByteCountFormatter.string(fromByteCount:used.int64Value,countStyle:.memory)) of \(ByteCountFormatter.string(fromByteCount:total.int64Value,countStyle:.memory))"
-    }
+
 }
 
 // Legacy preference-pane hosts can attach a fixed initial frame. Adopt the
@@ -247,5 +196,4 @@ private final class SettingsHost: NSHostingView<SettingsScreen> {
         model.preferences=preferences as? [String:Any] ?? [:]
         model.message=message; model.error=error; model.busy=busy; model.version=version
     }
-    @objc func selectTab(_ tab:Int) { model.tab=tab }
 }

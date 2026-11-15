@@ -1,4 +1,4 @@
 #import <Foundation/Foundation.h>
-@interface AsusSystemStatus : NSObject
+@interface AsusDeviceEnvironment : NSObject
 - (NSDictionary *)sample;
 @end

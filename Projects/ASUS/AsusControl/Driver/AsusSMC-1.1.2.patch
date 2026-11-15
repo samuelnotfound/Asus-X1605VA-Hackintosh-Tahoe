@@ -11,7 +11,7 @@ index 3406c5d..bbe9ec0 100644
 +
 +/build-device-settings/
 diff --git a/AsusSMC.xcodeproj/project.pbxproj b/AsusSMC.xcodeproj/project.pbxproj
-index 3228b3f..78952eb 100644
+index 3228b3f..7e46f64 100644
 --- a/AsusSMC.xcodeproj/project.pbxproj
 +++ b/AsusSMC.xcodeproj/project.pbxproj
 @@ -520,7 +520,7 @@
@@ -28,7 +28,7 @@ index 3228b3f..78952eb 100644
  				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/MacKernelSDK/Library/x86_64";
  				MACOSX_DEPLOYMENT_TARGET = 10.11;
 -				MODULE_VERSION = 1.4.1;
-+				MODULE_VERSION = 1.1.1;
++				MODULE_VERSION = 1.1.2;
  				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
  				MTL_FAST_MATH = YES;
  				ONLY_ACTIVE_ARCH = YES;
@@ -46,7 +46,7 @@ index 3228b3f..78952eb 100644
  				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/MacKernelSDK/Library/x86_64";
  				MACOSX_DEPLOYMENT_TARGET = 10.11;
 -				MODULE_VERSION = 1.4.1;
-+				MODULE_VERSION = 1.1.1;
++				MODULE_VERSION = 1.1.2;
  				MTL_ENABLE_DEBUG_INFO = NO;
  				MTL_FAST_MATH = YES;
  				SDKROOT = macosx;
@@ -88,7 +88,7 @@ index 0000000..12c6544
 +}
 +}
 diff --git a/AsusSMC/AsusSMC.cpp b/AsusSMC/AsusSMC.cpp
-index c3c3fc5..eb6100b 100755
+index c3c3fc5..98b639b 100755
 --- a/AsusSMC/AsusSMC.cpp
 +++ b/AsusSMC/AsusSMC.cpp
 @@ -6,6 +6,10 @@
@@ -185,7 +185,7 @@ index c3c3fc5..eb6100b 100755
      }
  
      DBGLOG("als", "refreshALS lux %u", lux);
-@@ -450,7 +488,215 @@ bool AsusSMC::refreshALS(bool post) {
+@@ -450,7 +488,219 @@ bool AsusSMC::refreshALS(bool post) {
      return ret == kIOReturnSuccess;
  }
  
@@ -215,6 +215,10 @@ index c3c3fc5..eb6100b 100755
 +    if (!atomic_compare_exchange_strong_explicit(&pendingFanCommand, &expected, request,
 +                                                memory_order_release, memory_order_relaxed))
 +        return kIOReturnBusy;
++    // Wake the existing workloop timer for an accepted explicit request.
++    // ACPI still runs only on that workloop, never in this property handler.
++    // Keep the normal one-second interval for passive sensor monitoring.
++    if (poller) poller->setTimeoutMS(0);
 +    return kIOReturnSuccess;
 +}
 +
@@ -401,7 +405,7 @@ index c3c3fc5..eb6100b 100755
      uint32_t speed = 10000;
  
      if (isTACHAvailable) {
-@@ -809,8 +1055,6 @@ void AsusSMC::dispatchMessage(int message, void *data) {
+@@ -809,8 +1059,6 @@ void AsusSMC::dispatchMessage(int message, void *data) {
  }
  
  void AsusSMC::registerVSMC() {
@@ -410,7 +414,7 @@ index c3c3fc5..eb6100b 100755
      ALSSensor sensor {ALSSensor::Type::Unknown7, true, 6, false};
      ALSSensor noSensor {ALSSensor::Type::NoSensor, false, 0, false};
      SMCALSValue::Value emptyValue;
-@@ -861,7 +1105,7 @@ void AsusSMC::registerVSMC() {
+@@ -861,7 +1109,7 @@ void AsusSMC::registerVSMC() {
          0, SmcKeyTypeFpe2, new F0Ac(&currentFanSpeed),
          SMC_KEY_ATTRIBUTE_READ | SMC_KEY_ATTRIBUTE_FUNCTION));
  
@@ -419,7 +423,7 @@ index c3c3fc5..eb6100b 100755
      lilu_os_strncpy(desc.strFunction, "System Fan", DiagFunctionStrLen);
  
      VirtualSMCAPI::addKey(KeyF0ID, vsmcPlugin.data, VirtualSMCAPI::valueWithData(
-@@ -875,6 +1119,9 @@ void AsusSMC::registerVSMC() {
+@@ -875,6 +1123,9 @@ void AsusSMC::registerVSMC() {
      }
  
      qsort(const_cast<VirtualSMCKeyValue *>(vsmcPlugin.data.data()), vsmcPlugin.data.size(), sizeof(VirtualSMCKeyValue), VirtualSMCKeyValue::compare);
@@ -429,7 +433,7 @@ index c3c3fc5..eb6100b 100755
  }
  
  bool AsusSMC::vsmcNotificationHandler(void *sensors, void *refCon, IOService *vsmc, IONotifier *notifier) {
-@@ -889,8 +1136,11 @@ bool AsusSMC::vsmcNotificationHandler(void *sensors, void *refCon, IOService *vs
+@@ -889,8 +1140,11 @@ bool AsusSMC::vsmcNotificationHandler(void *sensors, void *refCon, IOService *vs
              self->poller = IOTimerEventSource::timerEventSource(self, [](OSObject *object, IOTimerEventSource *sender) {
                  auto ls = OSDynamicCast(AsusSMC, object);
                  if (ls) {
@@ -441,7 +445,7 @@ index c3c3fc5..eb6100b 100755
                  }
              });
  
-@@ -909,6 +1159,8 @@ bool AsusSMC::vsmcNotificationHandler(void *sensors, void *refCon, IOService *vs
+@@ -909,6 +1163,8 @@ bool AsusSMC::vsmcNotificationHandler(void *sensors, void *refCon, IOService *vs
                  return false;
              }
  
@@ -522,11 +526,11 @@ index 0000000..0a40679
 +}
 diff --git a/DEVICE-SETTINGS.md b/DEVICE-SETTINGS.md
 new file mode 100644
-index 0000000..c5abbfe
+index 0000000..e8df595
 --- /dev/null
 +++ b/DEVICE-SETTINGS.md
 @@ -0,0 +1,116 @@
-+# AsusSMC device settings — ASUS Control 1.1.1
++# AsusSMC device settings — ASUS Control 1.1.2
 +
 +Based on `hieplpvip/AsusSMC` commit
 +`c15d2f297c86b65a3cb866cc2bcece595c136417`. Original MIT licensing and notices
@@ -549,7 +553,7 @@ index 0000000..c5abbfe
 +`3f750085caa17ec3a7880f11c11bf4f48cd6a164`, Lilu 1.7.2 and VirtualSMC 1.3.8
 +SDK headers. Output: `build-device-settings/AsusSMC.kext`. Build runs decoder,
 +command-boundary, startup-contract and signature checks. It never installs or
-+loads the result. Release versions derive from `VERSION` (1.1.1); control API
++loads the result. Release versions derive from `VERSION` (1.1.2); control API
 +2 is independent of release numbering.
 +
 +Select a profile with `-asusctrl asusctrlprofile=x1605va305`. Add
@@ -563,9 +567,9 @@ index 0000000..c5abbfe
 +
 +The user corrected the earlier attribution: the boot stall was unrelated to
 +AsusSMC. Driver1.1.0 is running with RPM monitoring and working physical
-+Auto/Full Speed. The1.1.1 kext changes version metadata/documentation only;
-+userspace is compatible with the existing1.1.0 API2 driver. There is no need to
-+replace EFI merely to test the updated native grouped settings pane.
++Auto/Full Speed. The1.1.2 kext wakes the existing timer when it accepts a userspace command;
++userspace is compatible with the existing1.1.0 API2 driver. The existing1.1.0 driver remains compatible, but its one-second request polling
++remains until the new kext is used. Startup behavior is unchanged.
 +
 +Only the previously implemented fan-monitoring path runs automatically. Added
 +settings discovery and queries require an explicit queued userspace request.
@@ -644,10 +648,10 @@ index 0000000..c5abbfe
 +sleep/wake or physical device control.
 diff --git a/Tests/boot-contract.py b/Tests/boot-contract.py
 new file mode 100644
-index 0000000..6a871d4
+index 0000000..29f309d
 --- /dev/null
 +++ b/Tests/boot-contract.py
-@@ -0,0 +1,12 @@
+@@ -0,0 +1,17 @@
 +"""Guard the specific boot-path regression boundary; no driver is loaded."""
 +from pathlib import Path
 +
@@ -660,6 +664,11 @@ index 0000000..6a871d4
 +process = source.split('void AsusSMC::processFanCommand()', 1)[1].split('void AsusSMC::initKeyboardDevice()', 1)[0]
 +assert 'if (cmd == 0x200U)' in process and 'refreshDeviceSettings();' in process
 +print('PASS: no new settings discovery/queries in startup or periodic callback; explicit queued refresh required.')
++
++handler = source.split('IOReturn AsusSMC::setProperties(', 1)[1].split('void AsusSMC::processFanCommand()', 1)[0]
++assert 'poller->setTimeoutMS(0)' in handler
++assert 'evaluateInteger(' not in handler and 'wmi_evaluate_method(' not in handler
++print('PASS: accepted commands wake the workloop; the property handler performs no firmware calls.')
 diff --git a/Tests/protocol.cpp b/Tests/protocol.cpp
 new file mode 100644
 index 0000000..9f806bc
@@ -699,11 +708,11 @@ index 0000000..9f806bc
 +}
 diff --git a/VERSION b/VERSION
 new file mode 100644
-index 0000000..524cb55
+index 0000000..45a1b3f
 --- /dev/null
 +++ b/VERSION
 @@ -0,0 +1 @@
-+1.1.1
++1.1.2
 diff --git a/build-device-settings.sh b/build-device-settings.sh
 new file mode 100644
 index 0000000..2620a3c

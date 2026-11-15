@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <stdio.h>
+#include <signal.h>
 
 NSURL *AsusSupportDirectory(void) {
     return [[NSFileManager.defaultManager URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask].firstObject URLByAppendingPathComponent:@"AsusControl" isDirectory:YES];
@@ -25,6 +26,8 @@ NSDictionary *AsusReadPreferences(void) {
     NSDictionary *saved = readJSON(@"settings.json");
     [preferences addEntriesFromDictionary:saved];
     if (!saved[@"ManualProfile"] && saved[@"ACProfile"]) preferences[@"ManualProfile"] = saved[@"ACProfile"];
+    // Retired switching rules must not override the three direct profile cards.
+    [preferences removeObjectsForKeys:@[@"SplitProfiles",@"FollowLowPower",@"ACProfile",@"BatteryProfile"]];
     return preferences;
 }
 BOOL AsusWritePreferences(NSDictionary *preferences, NSError **error) { return writeJSON(@"settings.json", preferences, error); }
@@ -79,8 +82,10 @@ BOOL AsusConfigureAgent(NSBundle *bundle, NSDictionary *preferences, NSError **e
     NSString *domain = [NSString stringWithFormat:@"gui/%u", getuid()];
     NSString *service = [domain stringByAppendingString:@"/com.samuelnotfound.AsusControl.Agent"];
     if (launchctl(@[@"print", service], YES, NULL)) {
-        // A loaded job can have exited. Kickstart both restarts an old binary
-        // after an update and reports failure instead of silently losing work.
+        // Normal changes wake the existing agent. Restart only an outdated
+        // binary or a loaded job whose process has exited.
+        if ([AsusReadAgentState()[@"Version"] isEqual:@ASUS_CONTROL_VERSION] &&
+            launchctl(@[@"kill", @"SIGUSR1", service], YES, NULL)) return YES;
         return launchctl(@[@"kickstart", @"-k", service], NO, error);
     }
     return launchctl(@[@"bootstrap", domain, plist.path], NO, error);

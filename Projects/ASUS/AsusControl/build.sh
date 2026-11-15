@@ -16,7 +16,7 @@ for ARCH in x86_64 arm64; do
     Source/SettingsView.swift -o "build/SettingsView-$ARCH.o"
   xcrun clang -arch "$ARCH" -mmacosx-version-min=13.0 -fobjc-arc -O2 -Wall -Wextra -Werror \
     "-DASUS_CONTROL_VERSION=\"$SETTINGS_VERSION\"" -Ibuild -ISource -bundle \
-    Source/AsusControlPane.m Source/DeviceClient.m Source/Policy.m Source/Preferences.m Source/SystemStatus.m \
+    Source/AsusControlPane.m Source/DeviceClient.m Source/Policy.m Source/Preferences.m Source/DeviceEnvironment.m Source/PolicySession.m \
     "build/SettingsView-$ARCH.o" -L"$SWIFT_LIB" -L/usr/lib/swift -Wl,-rpath,/usr/lib/swift \
     -framework SwiftUI -framework Combine -framework Cocoa -framework PreferencePanes -framework IOKit -framework CoreGraphics \
     -o "build/AsusControl-$ARCH"
@@ -24,7 +24,7 @@ done
 lipo -create build/AsusControl-x86_64 build/AsusControl-arm64 -output "$PANE/Contents/MacOS/AsusControl"
 xcrun clang "${FLAGS[@]}" Source/control.m Source/DeviceClient.m Source/Preferences.m Source/Policy.m \
   -framework Foundation -framework IOKit -o "$PANE/Contents/Helpers/asusctl"
-xcrun clang "${FLAGS[@]}" Source/agent.m Source/DeviceClient.m Source/Policy.m Source/Preferences.m Source/SystemStatus.m \
+xcrun clang "${FLAGS[@]}" Source/agent.m Source/DeviceClient.m Source/Policy.m Source/Preferences.m Source/DeviceEnvironment.m Source/PolicySession.m \
   -framework Foundation -framework IOKit -framework CoreGraphics -o "$PANE/Contents/Helpers/asuscontrol-agent"
 python3 - "$SETTINGS_VERSION" "$PANE" <<'PY'
 import pathlib, plistlib, sys
