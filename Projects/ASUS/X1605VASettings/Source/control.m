@@ -6,13 +6,21 @@
 #include <string.h>
 
 static int usage(void) {
-    fputs("Usage: x1605vactl status | profile standard|whisper|performance | fan auto|full | keyboard 0..100 | --version\n", stderr);
+    fputs("Usage: x1605vactl status | refresh | profile standard|whisper|performance | fan auto|full | keyboard 0..100 | --version\n", stderr);
     return 2;
 }
 
 int main(int argc, const char **argv) {
     @autoreleasepool {
         if (argc == 2 && !strcmp(argv[1], "--version")) { puts(X1605VA_VERSION); return 0; }
+        if (argc == 2 && !strcmp(argv[1], "refresh")) {
+            NSError *error = nil;
+            if (!X1605VARefreshSettings(&error)) {
+                fprintf(stderr, "%s\n", error.localizedDescription.UTF8String); return 1;
+            }
+            NSData *json = [NSJSONSerialization dataWithJSONObject:X1605VAReadStatus() options:NSJSONWritingPrettyPrinted error:NULL];
+            fwrite(json.bytes, 1, json.length, stdout); puts(""); return 0;
+        }
         if (argc == 2 && !strcmp(argv[1], "status")) {
             NSData *json = [NSJSONSerialization dataWithJSONObject:X1605VAReadStatus() options:NSJSONWritingPrettyPrinted error:NULL];
             fwrite(json.bytes, 1, json.length, stdout); puts(""); return 0;

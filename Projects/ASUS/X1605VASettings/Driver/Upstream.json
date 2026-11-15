@@ -1,6 +1,6 @@
 {
   "repository": "https://github.com/hieplpvip/AsusSMC.git",
   "commit": "c15d2f297c86b65a3cb866cc2bcece595c136417",
-  "release": "1.0.0",
-  "patch": "AsusSMC-1.0.0.patch"
+  "release": "1.0.1",
+  "patch": "AsusSMC-1.0.1.patch"
 }

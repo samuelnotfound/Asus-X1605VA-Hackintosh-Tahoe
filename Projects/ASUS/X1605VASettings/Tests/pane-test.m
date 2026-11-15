@@ -27,7 +27,15 @@ int main(int argc, const char **argv) {
         [pane performSelector:@selector(displayStatus)];
         for (NSButton *card in cards) assert(!card.enabled);
         assert(!keyboard.enabled);
+        // 1.0.0 exposed API 1 but did not support deferred, on-demand reads.
         [pane setValue:@{@"Available":@YES, @"AsusSMC-Version":@"1.0.0",
+            @"X1605VA-ControlAPIVersion":@1, @"FanControlAllowed":@YES,
+            @"KeyboardControlAvailable":@YES, @"KeyboardReadingValid":@YES} forKey:@"snapshot"];
+        [pane performSelector:@selector(displayStatus)];
+        for (NSButton *card in cards) assert(!card.enabled);
+        assert(!keyboard.enabled);
+        [pane setValue:@{@"Available":@YES, @"AsusSMC-Version":@"1.0.1",
+            @"SettingsRefreshAvailable":@YES,
             @"X1605VA-ControlAPIVersion":@1, @"FanControlAllowed":@YES,
             @"FanReadingValid":@YES, @"FanRPM":@2500, @"FanRequestedMode":@0,
             @"ThermalProfileValid":@YES, @"ThermalProfile":@0,

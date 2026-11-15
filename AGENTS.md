@@ -4,7 +4,7 @@ Read `docs/DEVELOPMENT-CONTINUATION.md` before changing this repository.
 
 - This is the current public Tahoe repository. Do not copy private diagnostics,
   credentials, identity values, EFI backups, or chat transcripts here.
-- The current settings project is `Projects/ASUS/X1605VASettings`, version 1.0.0.
+- The current settings project is `Projects/ASUS/X1605VASettings`, version 1.0.1.
   Keep it separate from the deprecated X1605VA Assistant.
 - Scope: keyboard backlight, live fan RPM, Auto/Full Speed, and the three
   thermal profiles. Do not add microphone or screen-brightness controls.

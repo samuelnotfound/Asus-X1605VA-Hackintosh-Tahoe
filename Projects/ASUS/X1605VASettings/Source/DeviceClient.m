@@ -47,31 +47,31 @@ NSDictionary *X1605VAReadStatus(void) {
     NSArray *keys = @[@"AsusSMC-Version", @"X1605VA-ControlAPIVersion", @"FanBackend",
         @"FanRPM", @"FanReadingValid", @"FanSamples", @"FanControlAllowed",
         @"FanRequestedMode", @"ThermalProfile", @"ThermalProfileValid",
-        @"KeyboardControlAvailable", @"KeyboardPercent", @"KeyboardReadingValid"];
+        @"KeyboardControlAvailable", @"KeyboardPercent", @"KeyboardReadingValid", @"SettingsRefreshAvailable"];
     for (NSString *key in keys) if (values[key]) status[key] = values[key];
     return status;
 }
 
-BOOL X1605VASendCommand(BOOL keyboard, uint32_t value, NSError **error) {
-    if ((keyboard && value > 100) || (!keyboard && (value < 1 || value > 5)))
+static BOOL sendCommand(BOOL keyboard, BOOL refresh, uint32_t value, NSError **error) {
+    if (refresh ? value != 1 : (keyboard && value > 100) || (!keyboard && (value < 1 || value > 5)))
         return fail(error, @"Invalid control value.", 1);
-    if (!keyboard && geteuid() != 0)
+    if (!keyboard && !refresh && geteuid() != 0)
         return fail(error, @"Administrator authorization is required for fan settings.", 2);
     io_service_t service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AsusSMC"));
     if (!service) return fail(error, @"AsusSMC is not loaded.", 3);
     NSDictionary *before = properties(service);
     if ([before[@"X1605VA-ControlAPIVersion"] integerValue] != 1 ||
-        ![before[keyboard ? @"KeyboardControlAvailable" : @"FanControlAllowed"] boolValue]) {
+        ![before[refresh ? @"SettingsRefreshAvailable" : keyboard ? @"KeyboardControlAvailable" : @"FanControlAllowed"] boolValue]) {
         IOObjectRelease(service);
-        return fail(error, keyboard ? @"The keyboard-backlight interface is unavailable." :
+        return fail(error, refresh ? @"This driver does not support on-demand settings reads." : keyboard ? @"The keyboard-backlight interface is unavailable." :
             @"Fan controls are unavailable. Check the AsusSMC version and boot arguments.", 4);
     }
-    NSString *completed = keyboard ? @"KeyboardCompletedRequestID" : @"FanCompletedRequestID";
+    NSString *completed = refresh ? @"SettingsCompletedRequestID" : keyboard ? @"KeyboardCompletedRequestID" : @"FanCompletedRequestID";
     uint32_t previous = 0;
     X1605VADecodeNumber32(before[completed], &previous);
     uint32_t request;
     do { request = arc4random_uniform(INT32_MAX) + 1; } while (request == previous);
-    NSDictionary *command = keyboard ? @{@"KeyboardPercent": @(value), @"KeyboardRequestID": @(request)} :
+    NSDictionary *command = refresh ? @{@"SettingsCommand": @1, @"SettingsRequestID": @(request)} : keyboard ? @{@"KeyboardPercent": @(value), @"KeyboardRequestID": @(request)} :
         @{@"FanCommand": @(value), @"FanRequestID": @(request)};
     kern_return_t ret = IORegistryEntrySetCFProperties(service, (__bridge CFTypeRef)command);
     if (ret != KERN_SUCCESS) {
@@ -83,7 +83,9 @@ BOOL X1605VASendCommand(BOOL keyboard, uint32_t value, NSError **error) {
         uint32_t identifier = 0;
         if (X1605VADecodeNumber32(reply[completed], &identifier) && identifier == request) {
             BOOL success = NO;
-            if (keyboard) {
+            if (refresh) {
+                success = [reply[@"SettingsCommandSucceeded"] isEqual:@YES];
+            } else if (keyboard) {
                 success = [reply[@"KeyboardCommandSucceeded"] isEqual:@YES];
             } else {
                 uint32_t firmwareReply = 0;
@@ -96,4 +98,11 @@ BOOL X1605VASendCommand(BOOL keyboard, uint32_t value, NSError **error) {
     }
     IOObjectRelease(service);
     return fail(error, @"The request timed out. It may still complete; it has not been retried.", 6);
+}
+
+BOOL X1605VASendCommand(BOOL keyboard, uint32_t value, NSError **error) {
+    return sendCommand(keyboard, NO, value, error);
+}
+BOOL X1605VARefreshSettings(NSError **error) {
+    return sendCommand(NO, YES, 1, error);
 }

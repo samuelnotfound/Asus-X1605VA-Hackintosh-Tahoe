@@ -73,7 +73,9 @@ static NSTextField *label(NSString *text, CGFloat size, NSFontWeight weight) {
     dispatch_queue_t _worker;
     NSDictionary *_snapshot;
     NSString *_lastError;
+    NSString *_lastReadError;
     BOOL _active, _refreshing, _thermalBusy, _keyboardBusy;
+    BOOL _settingsRefreshStopped;
     NSInteger _desiredKeyboard;
     NSUInteger _keyboardGeneration;
     NSTimeInterval _lastKeyboardInteraction;
@@ -157,6 +159,8 @@ static NSTextField *label(NSString *text, CGFloat size, NSFontWeight weight) {
 }
 - (void)didSelect {
     _active = YES;
+    _settingsRefreshStopped = NO;
+    _lastReadError = nil;
     [self refresh];
     __weak typeof(self) weakSelf = self;
     _pollTimer = [NSTimer scheduledTimerWithTimeInterval:1 repeats:YES block:^(NSTimer *timer) {
@@ -178,20 +182,30 @@ static NSTextField *label(NSString *text, CGFloat size, NSFontWeight weight) {
 - (void)refresh {
     if (_refreshing || !_active) return;
     _refreshing = YES;
+    BOOL refreshSettings = !_settingsRefreshStopped;
     __weak typeof(self) weakSelf = self;
     dispatch_async(_worker, ^{
         NSDictionary *status = X1605VAReadStatus();
+        NSError *readError = nil;
+        if (refreshSettings && [status[@"SettingsRefreshAvailable"] boolValue]) {
+            X1605VARefreshSettings(&readError);
+            status = X1605VAReadStatus();
+        }
         dispatch_async(dispatch_get_main_queue(), ^{
             typeof(self) self = weakSelf; if (!self) return;
             self->_refreshing = NO;
             if (!self->_active) return;
-            self->_snapshot = status; [self displayStatus];
+            self->_snapshot = status;
+            self->_lastReadError = readError.localizedDescription;
+            if (readError.code == 6) self->_settingsRefreshStopped = YES;
+            [self displayStatus];
         });
     });
 }
 - (void)displayStatus {
     BOOL available = [_snapshot[@"Available"] boolValue];
-    BOOL api = [_snapshot[@"X1605VA-ControlAPIVersion"] integerValue] == 1;
+    BOOL api = [_snapshot[@"X1605VA-ControlAPIVersion"] integerValue] == 1 &&
+        [_snapshot[@"SettingsRefreshAvailable"] boolValue];
     BOOL fanAllowed = available && api && [_snapshot[@"FanControlAllowed"] boolValue] && !_thermalBusy;
     BOOL profileValid = [_snapshot[@"ThermalProfileValid"] boolValue];
     NSInteger profile = [_snapshot[@"ThermalProfile"] integerValue];
@@ -225,8 +239,9 @@ static NSTextField *label(NSString *text, CGFloat size, NSFontWeight weight) {
     _version.stringValue = [NSString stringWithFormat:@"X1605VA Settings %s · AsusSMC %@", X1605VA_VERSION, driver];
     if (!_thermalBusy && !_keyboardBusy) {
         if (_lastError.length) _status.stringValue = _lastError;
+        else if (_lastReadError.length) _status.stringValue = _lastReadError;
         else if (!available) _status.stringValue = @"AsusSMC is not loaded. Settings remain unavailable.";
-        else if (!api) _status.stringValue = @"Install the X1605VA AsusSMC 1.x fork to enable these settings.";
+        else if (!api) _status.stringValue = @"Install X1605VA AsusSMC " @X1605VA_VERSION @" to enable these settings.";
         else if (![_snapshot[@"FanControlAllowed"] boolValue]) _status.stringValue = @"Fan controls are disabled. See the project setup instructions.";
         else _status.stringValue = @"Administrator approval is required when changing fan settings.";
     }

@@ -1,4 +1,9 @@
-# X1605VA Settings — 1.0.0
+# X1605VA Settings — 1.0.1
+
+**Boot regression:** 1.0.0 froze before login on the X1605VA. Keep a working
+EFI available. Version 1.0.1 removes the added settings discovery/reads from
+startup and periodic polling, and restores the original AsusSMC identifier.
+It is a recovery candidate; a successful boot has not yet been verified.
 
 A separate macOS preference pane for the ASUS Vivobook X1605VA, BIOS 305.
 It follows MyASUS Device Settings grouping and profile names using native
@@ -22,12 +27,13 @@ RPM slider, curve editor, or invented minimum/maximum speed.
 - **Keyboard Backlight:** one continuous 0–100% slider.
 - Physical keyboard control retains its existing four steps.
 - Slider updates stay local while dragging and coalesce firmware requests.
-  Cached status refreshes once per second while the pane is selected.
+  The pane requests readback while selected; added firmware reads never run
+  automatically during driver startup or ordinary fan polling.
 
 No microphone, screen-brightness, trackpad, or keyboard remapping controls are
 included. Accessibility and Input Monitoring permission are not requested.
-There is no login agent, automatic settings restore, or write on opening the
-pane. Keyboard control uses the existing percentage-backlight ACPI methods,
+There is no login agent or automatic settings restore. Opening the pane reads
+state without changing fan/backlight settings. Keyboard control uses the existing percentage-backlight ACPI methods,
 not CoreBrightness, raw EC offsets, or the old helper application.
 
 ## Build from source
@@ -53,7 +59,7 @@ Section names and profile presentation follow [MyASUS Device Settings](https://w
 
 ## Driver setup
 
-Requires **X1605VA AsusSMC fork 1.0.0**, control API 1. The older 1.4.2 test
+Requires **X1605VA AsusSMC fork 1.0.1**, control API 1. The older 1.4.2 test
 kext has fan monitoring/control but lacks this pane's profile/backlight API,
 so controls remain disabled with that version.
 
@@ -85,10 +91,12 @@ limited to the local console user or administrator by the driver.
 
 ## Versioning and development
 
-The first release is **1.0.0**. `VERSION` supplies the pane and bundled utility
+The first release was 1.0.0; the current recovery candidate is **1.0.1**.
+`VERSION` supplies the pane and bundled utility
 versions. `Driver/Upstream.json` pins the matching driver release and upstream
-commit. The fork has a matching `VERSION`, with `com.samuelnotfound.AsusSMC`
-as its identifier. Control API 1 is independent of release numbering. There
+commit. The fork has a matching `VERSION` and retains the upstream
+`com.hieplpvip.AsusSMC` identifier for replacement compatibility. The 1.0.0
+identifier change has been reverted. Control API 1 is independent of release numbering. There
 is no separately versioned installer/helper product.
 
 The driver changes live in a separate AsusSMC checkout. Until its GitHub fork
@@ -104,10 +112,12 @@ readback. Offscreen light/dark previews are saved in `build/previews`.
 Driver tests cover RPM scaling, stopped fans, unsupported replies, encoding
 overflow and Vivobook profile values.
 
-The preceding driver verified live RPM and physical Auto/Full Speed behavior
+The preceding fan-only driver verified live RPM and physical Auto/Full Speed behavior
 on X1605VA BIOS 305. The new pane, keyboard requests, profile readback and
-System Settings integration need testing on the matching 1.0.0 driver.
-Fixture tests do not establish hardware-write or sleep/wake behavior.
+System Settings integration need testing on the matching 1.0.1 driver.
+Fixture tests do not establish successful boot, hardware writes, or sleep/wake
+behavior. A boot-path regression check prevents new settings discovery/queries
+from being reintroduced into startup or the periodic callback.
 
 ## Credits and license
 

@@ -9,7 +9,7 @@ index 3406c5d..eed3f6e 100644
 +/.deps/
 +/build-x1605va/
 diff --git a/AsusSMC.xcodeproj/project.pbxproj b/AsusSMC.xcodeproj/project.pbxproj
-index 3228b3f..d684b12 100644
+index 3228b3f..2484317 100644
 --- a/AsusSMC.xcodeproj/project.pbxproj
 +++ b/AsusSMC.xcodeproj/project.pbxproj
 @@ -520,7 +520,7 @@
@@ -17,7 +17,7 @@ index 3228b3f..d684b12 100644
  				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
  				COPY_PHASE_STRIP = NO;
 -				CURRENT_PROJECT_VERSION = 1.4.1;
-+				CURRENT_PROJECT_VERSION = 1.0.0;
++				CURRENT_PROJECT_VERSION = 1.0.1;
  				DEBUG_INFORMATION_FORMAT = dwarf;
  				ENABLE_STRICT_OBJC_MSGSEND = YES;
  				ENABLE_TESTABILITY = YES;
@@ -26,7 +26,7 @@ index 3228b3f..d684b12 100644
  				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/MacKernelSDK/Library/x86_64";
  				MACOSX_DEPLOYMENT_TARGET = 10.11;
 -				MODULE_VERSION = 1.4.1;
-+				MODULE_VERSION = 1.0.0;
++				MODULE_VERSION = 1.0.1;
  				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
  				MTL_FAST_MATH = YES;
  				ONLY_ACTIVE_ARCH = YES;
@@ -35,7 +35,7 @@ index 3228b3f..d684b12 100644
  				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
  				COPY_PHASE_STRIP = NO;
 -				CURRENT_PROJECT_VERSION = 1.4.1;
-+				CURRENT_PROJECT_VERSION = 1.0.0;
++				CURRENT_PROJECT_VERSION = 1.0.1;
  				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
  				ENABLE_NS_ASSERTIONS = NO;
  				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -44,30 +44,12 @@ index 3228b3f..d684b12 100644
  				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/MacKernelSDK/Library/x86_64";
  				MACOSX_DEPLOYMENT_TARGET = 10.11;
 -				MODULE_VERSION = 1.4.1;
-+				MODULE_VERSION = 1.0.0;
++				MODULE_VERSION = 1.0.1;
  				MTL_ENABLE_DEBUG_INFO = NO;
  				MTL_FAST_MATH = YES;
  				SDKROOT = macosx;
-@@ -627,7 +627,7 @@
- 				MODULE_START = "$(PRODUCT_NAME)_kern_start";
- 				MODULE_STOP = "$(PRODUCT_NAME)_kern_stop";
- 				OTHER_CPLUSPLUSFLAGS = "-Wno-inconsistent-missing-override";
--				PRODUCT_BUNDLE_IDENTIFIER = com.hieplpvip.AsusSMC;
-+				PRODUCT_BUNDLE_IDENTIFIER = com.samuelnotfound.AsusSMC;
- 				PRODUCT_NAME = "$(TARGET_NAME)";
- 				RUN_CLANG_STATIC_ANALYZER = YES;
- 				WRAPPER_EXTENSION = kext;
-@@ -653,7 +653,7 @@
- 				MODULE_START = "$(PRODUCT_NAME)_kern_start";
- 				MODULE_STOP = "$(PRODUCT_NAME)_kern_stop";
- 				OTHER_CPLUSPLUSFLAGS = "-Wno-inconsistent-missing-override";
--				PRODUCT_BUNDLE_IDENTIFIER = com.hieplpvip.AsusSMC;
-+				PRODUCT_BUNDLE_IDENTIFIER = com.samuelnotfound.AsusSMC;
- 				PRODUCT_NAME = "$(TARGET_NAME)";
- 				WRAPPER_EXTENSION = kext;
- 			};
 diff --git a/AsusSMC/AsusSMC.cpp b/AsusSMC/AsusSMC.cpp
-index c3c3fc5..5e1879a 100755
+index c3c3fc5..ec9f50a 100755
 --- a/AsusSMC/AsusSMC.cpp
 +++ b/AsusSMC/AsusSMC.cpp
 @@ -6,6 +6,9 @@
@@ -89,7 +71,7 @@ index c3c3fc5..5e1879a 100755
  
      return true;
  }
-@@ -70,8 +75,25 @@ bool AsusSMC::start(IOService *provider) {
+@@ -70,8 +75,28 @@ bool AsusSMC::start(IOService *provider) {
  
      initALSDevice();
  
@@ -109,14 +91,17 @@ index c3c3fc5..5e1879a 100755
 +    setProperty("FanControlAllowed", fanControlAllowed);
 +    setProperty("X1605VA-ControlAPIVersion", X1605VA::ControlAPIVersion, 32);
 +    setProperty("X1605VA-UpstreamCommit", "c15d2f297c86b65a3cb866cc2bcece595c136417");
-+    if (x1605vaFan) {
-+        initKeyboardDevice();
-+    }
++    // Keep boot identical to the fan-only driver. New ACPI discovery/queries
++    // run only after a local user explicitly requests a settings refresh.
++    setProperty("SettingsRefreshAvailable", x1605vaFan);
++    setProperty("KeyboardControlAvailable", false);
++    setProperty("KeyboardReadingValid", false);
++    setProperty("ThermalProfileValid", false);
 +    // No thermal-profile or fan-mode write is performed at startup.
      initBattery();
  
      initVirtualKeyboard();
-@@ -112,6 +134,7 @@ bool AsusSMC::start(IOService *provider) {
+@@ -112,6 +137,7 @@ bool AsusSMC::start(IOService *provider) {
  }
  
  void AsusSMC::stop(IOService *provider) {
@@ -124,7 +109,7 @@ index c3c3fc5..5e1879a 100755
      if (poller) {
          poller->cancelTimeout();
      }
-@@ -123,6 +146,7 @@ void AsusSMC::stop(IOService *provider) {
+@@ -123,6 +149,7 @@ void AsusSMC::stop(IOService *provider) {
      }
      OSSafeReleaseNULL(workloop);
      OSSafeReleaseNULL(poller);
@@ -132,7 +117,7 @@ index c3c3fc5..5e1879a 100755
      OSSafeReleaseNULL(command_gate);
  
      _publishNotify->remove();
-@@ -442,7 +466,6 @@ bool AsusSMC::refreshALS(bool post) {
+@@ -442,7 +469,6 @@ bool AsusSMC::refreshALS(bool post) {
  
      if (post) {
          VirtualSMCAPI::postInterrupt(SmcEventALSChange);
@@ -140,7 +125,7 @@ index c3c3fc5..5e1879a 100755
      }
  
      DBGLOG("als", "refreshALS lux %u", lux);
-@@ -450,7 +473,124 @@ bool AsusSMC::refreshALS(bool post) {
+@@ -450,7 +476,133 @@ bool AsusSMC::refreshALS(bool post) {
      return ret == kIOReturnSuccess;
  }
  
@@ -152,18 +137,19 @@ index c3c3fc5..5e1879a 100755
 +    if (!dict || dict->getCount() != 2) return kIOReturnBadArgument;
 +    if (!atomic_load_explicit(&fanControlReady, memory_order_acquire)) return kIOReturnNotReady;
 +    const bool keyboard = dict->getObject("KeyboardPercent") != nullptr;
++    const bool refresh = dict->getObject("SettingsCommand") != nullptr;
 +    const bool administrator = IOUserClient::clientHasPrivilege(current_task(), kIOClientPrivilegeAdministrator) == kIOReturnSuccess;
-+    if (!administrator && (!keyboard || IOUserClient::clientHasPrivilege(current_task(), kIOClientPrivilegeLocalUser) != kIOReturnSuccess))
++    if (!administrator && ((!keyboard && !refresh) || IOUserClient::clientHasPrivilege(current_task(), kIOClientPrivilegeLocalUser) != kIOReturnSuccess))
 +        return kIOReturnNotPrivileged;
-+    if (keyboard ? !keyboardDevice : !fanControlAllowed) return kIOReturnNotReady;
-+    auto cmd = OSDynamicCast(OSNumber, dict->getObject(keyboard ? "KeyboardPercent" : "FanCommand"));
-+    auto id = OSDynamicCast(OSNumber, dict->getObject(keyboard ? "KeyboardRequestID" : "FanRequestID"));
-+    if (!cmd || !id || (keyboard ? cmd->unsigned64BitValue() > 100 :
++    if (refresh ? !x1605vaFan : keyboard ? !keyboardDevice : !fanControlAllowed) return kIOReturnNotReady;
++    auto cmd = OSDynamicCast(OSNumber, dict->getObject(refresh ? "SettingsCommand" : keyboard ? "KeyboardPercent" : "FanCommand"));
++    auto id = OSDynamicCast(OSNumber, dict->getObject(refresh ? "SettingsRequestID" : keyboard ? "KeyboardRequestID" : "FanRequestID"));
++    if (!cmd || !id || (refresh ? cmd->unsigned64BitValue() != 1 : keyboard ? cmd->unsigned64BitValue() > 100 :
 +        (cmd->unsigned64BitValue() < 1 || cmd->unsigned64BitValue() > 5)) ||
 +        id->unsigned64BitValue() == 0 || id->unsigned64BitValue() > UINT32_MAX)
 +        return kIOReturnBadArgument;
 +    uint64_t expected = 0;
-+    const uint32_t operation = keyboard ? 0x100U + cmd->unsigned32BitValue() : cmd->unsigned32BitValue();
++    const uint32_t operation = refresh ? 0x200U : keyboard ? 0x100U + cmd->unsigned32BitValue() : cmd->unsigned32BitValue();
 +    const uint64_t request = (id->unsigned64BitValue() << 32) | operation;
 +    if (!atomic_compare_exchange_strong_explicit(&pendingFanCommand, &expected, request,
 +                                                memory_order_release, memory_order_relaxed))
@@ -177,6 +163,14 @@ index c3c3fc5..5e1879a 100755
 +    if (!request) return;
 +    const uint32_t cmd = static_cast<uint32_t>(request);
 +    const uint32_t id = static_cast<uint32_t>(request >> 32);
++    if (cmd == 0x200U) {
++        if (!keyboardDevice) initKeyboardDevice();
++        refreshDeviceSettings();
++        setProperty("SettingsCommandSucceeded", true);
++        setProperty("SettingsCompletedRequestID", id, 32);
++        atomic_store_explicit(&pendingFanCommand, 0, memory_order_release);
++        return;
++    }
 +    if (cmd >= 0x100U && cmd <= 0x164U) {
 +        const uint32_t percent = cmd - 0x100U;
 +        auto arg = OSNumber::withNumber(percent, 32);
@@ -265,7 +259,7 @@ index c3c3fc5..5e1879a 100755
      uint32_t speed = 10000;
  
      if (isTACHAvailable) {
-@@ -809,8 +949,6 @@ void AsusSMC::dispatchMessage(int message, void *data) {
+@@ -809,8 +961,6 @@ void AsusSMC::dispatchMessage(int message, void *data) {
  }
  
  void AsusSMC::registerVSMC() {
@@ -274,7 +268,7 @@ index c3c3fc5..5e1879a 100755
      ALSSensor sensor {ALSSensor::Type::Unknown7, true, 6, false};
      ALSSensor noSensor {ALSSensor::Type::NoSensor, false, 0, false};
      SMCALSValue::Value emptyValue;
-@@ -861,7 +999,7 @@ void AsusSMC::registerVSMC() {
+@@ -861,7 +1011,7 @@ void AsusSMC::registerVSMC() {
          0, SmcKeyTypeFpe2, new F0Ac(&currentFanSpeed),
          SMC_KEY_ATTRIBUTE_READ | SMC_KEY_ATTRIBUTE_FUNCTION));
  
@@ -283,7 +277,7 @@ index c3c3fc5..5e1879a 100755
      lilu_os_strncpy(desc.strFunction, "System Fan", DiagFunctionStrLen);
  
      VirtualSMCAPI::addKey(KeyF0ID, vsmcPlugin.data, VirtualSMCAPI::valueWithData(
-@@ -875,6 +1013,9 @@ void AsusSMC::registerVSMC() {
+@@ -875,6 +1025,9 @@ void AsusSMC::registerVSMC() {
      }
  
      qsort(const_cast<VirtualSMCKeyValue *>(vsmcPlugin.data.data()), vsmcPlugin.data.size(), sizeof(VirtualSMCKeyValue), VirtualSMCKeyValue::compare);
@@ -293,20 +287,19 @@ index c3c3fc5..5e1879a 100755
  }
  
  bool AsusSMC::vsmcNotificationHandler(void *sensors, void *refCon, IOService *vsmc, IONotifier *notifier) {
-@@ -889,8 +1030,12 @@ bool AsusSMC::vsmcNotificationHandler(void *sensors, void *refCon, IOService *vs
+@@ -889,8 +1042,11 @@ bool AsusSMC::vsmcNotificationHandler(void *sensors, void *refCon, IOService *vs
              self->poller = IOTimerEventSource::timerEventSource(self, [](OSObject *object, IOTimerEventSource *sender) {
                  auto ls = OSDynamicCast(AsusSMC, object);
                  if (ls) {
 +                    ls->processFanCommand();
                      ls->refreshALS(true);
                      ls->refreshFan();
-+                    ls->refreshDeviceSettings();
 +                    // Fan polling must continue even when no ALS exists.
 +                    sender->setTimeoutMS(SensorUpdateTimeoutMS);
                  }
              });
  
-@@ -909,6 +1054,8 @@ bool AsusSMC::vsmcNotificationHandler(void *sensors, void *refCon, IOService *vs
+@@ -909,6 +1065,8 @@ bool AsusSMC::vsmcNotificationHandler(void *sensors, void *refCon, IOService *vs
                  return false;
              }
  
@@ -385,6 +378,24 @@ index 0000000..a24d5d6
 +    return true;
 +}
 +}
+diff --git a/Tests/boot-contract.py b/Tests/boot-contract.py
+new file mode 100644
+index 0000000..6a871d4
+--- /dev/null
++++ b/Tests/boot-contract.py
+@@ -0,0 +1,12 @@
++"""Guard the specific boot-path regression boundary; no driver is loaded."""
++from pathlib import Path
++
++source = Path('AsusSMC/AsusSMC.cpp').read_text()
++startup = source.split('bool AsusSMC::start(', 1)[1].split('void AsusSMC::stop(', 1)[0]
++callback = source.split('bool AsusSMC::vsmcNotificationHandler(', 1)[1].split('EXPORT extern', 1)[0]
++for name, body in [('start', startup), ('sensor callback', callback)]:
++    for forbidden in ['initKeyboardDevice(', 'refreshDeviceSettings(', 'evaluateInteger("GKPC"', 'evaluateInteger("SKPC"']:
++        assert forbidden not in body, f'{name} performs unsolicited settings work: {forbidden}'
++process = source.split('void AsusSMC::processFanCommand()', 1)[1].split('void AsusSMC::initKeyboardDevice()', 1)[0]
++assert 'if (cmd == 0x200U)' in process and 'refreshDeviceSettings();' in process
++print('PASS: no new settings discovery/queries in startup or periodic callback; explicit queued refresh required.')
 diff --git a/Tests/protocol.cpp b/Tests/protocol.cpp
 new file mode 100644
 index 0000000..a362454
@@ -414,24 +425,32 @@ index 0000000..a362454
 +}
 diff --git a/VERSION b/VERSION
 new file mode 100644
-index 0000000..3eefcb9
+index 0000000..7dea76e
 --- /dev/null
 +++ b/VERSION
 @@ -0,0 +1 @@
-+1.0.0
++1.0.1
 diff --git a/X1605VA.md b/X1605VA.md
 new file mode 100644
-index 0000000..eb14a62
+index 0000000..660253d
 --- /dev/null
 +++ b/X1605VA.md
-@@ -0,0 +1,84 @@
-+# AsusSMC for X1605VA — 1.0.0
+@@ -0,0 +1,102 @@
++# AsusSMC for X1605VA — 1.0.1
 +
-+The first release of the X1605VA fork is based on `hieplpvip/AsusSMC`
++This X1605VA fork is based on `hieplpvip/AsusSMC`
 +commit `c15d2f297c86b65a3cb866cc2bcece595c136417`. Upstream MIT licensing
 +and copyright notices are retained. The fork identifier is
-+`com.samuelnotfound.AsusSMC`; the service class and filename remain
++`com.hieplpvip.AsusSMC`; the service class and filename remain
 +`AsusSMC` and `AsusSMC.kext`.
++
++## Boot regression in 1.0.0
++
++The 1.0.0 driver froze before login. The provided report was an older
++WindowServer watchdog timeout, not a matching panic report; the cause is not
++proven. Version 1.0.1 removes the added namespace discovery and settings reads
++from startup/automatic polling, and restores the upstream bundle identifier.
++It remains a test candidate until boot is verified. Preserve the working EFI.
 +
 +## Scope
 +
@@ -449,7 +468,7 @@ index 0000000..eb14a62
 +
 +## Versioning
 +
-+`VERSION` is the SemVer release version, starting at **1.0.0**. The canonical
++`VERSION` is the SemVer release version, currently **1.0.1** (first release: 1.0.0). The canonical
 +build script uses it for the bundle and module versions. Control API version
 +1 is a compatibility number. `X1605VA-FanPatch = 1.0.0` is a retained legacy
 +diagnostic, not a separately versioned product. The upstream commit identifies
@@ -475,6 +494,8 @@ index 0000000..eb14a62
 +
 +## Interface
 +
++Added settings reads happen only after an explicit local-user request.
++There is no added settings discovery or polling at boot.
 +All new firmware operations run on the sensor workloop. The property handler
 +validates and queues one request; it never evaluates ACPI. User-space reads
 +consume cached IORegistry properties.
@@ -493,6 +514,14 @@ index 0000000..eb14a62
 +`KeyboardCommandSucceeded`. No arbitrary EC offsets or method names can be
 +submitted. Fan and keyboard writes share one queue.
 +
++A readback request contains exactly `SettingsCommand = 1` and
++`SettingsRequestID` (nonzero uint32). It requires local-console or administrator
++privilege. The workloop discovers the keyboard methods lazily, refreshes the
++cached profile/backlight state, then publishes `SettingsCompletedRequestID`
++and `SettingsCommandSucceeded`. Completion means the read job returned; the
++individual validity properties still determine whether data is available.
++The periodic sensor callback does not invoke these added queries.
++
 +`ThermalProfile`: 0 Standard, 1 Whisper, 2 Performance.
 +`ThermalProfileValid` indicates a valid firmware read. `KeyboardPercent` and
 +`KeyboardReadingValid` describe the backlight cache, not measured illumination.
@@ -507,14 +536,14 @@ index 0000000..eb14a62
 +
 +The preceding 1.4.2 driver verified live RPM and physical Auto/Full Speed on
 +X1605VA BIOS 305; profile commands received successful firmware replies. The
-+1.0.0 additions need a deliberate hardware test. Keyboard control, profile
++1.0.1 additions need a deliberate hardware test. Keyboard control, profile
 +readback and sleep/wake are not established by compilation or fixture tests.
 diff --git a/build-x1605va.sh b/build-x1605va.sh
 new file mode 100644
-index 0000000..f625e48
+index 0000000..e31c188
 --- /dev/null
 +++ b/build-x1605va.sh
-@@ -0,0 +1,68 @@
+@@ -0,0 +1,69 @@
 +#!/bin/bash
 +set -euo pipefail
 +cd "$(dirname "$0")"
@@ -555,7 +584,7 @@ index 0000000..f625e48
 +#include <mach/mach_types.h>
 +extern kern_return_t AsusSMC_kern_start(kmod_info_t *, void *);
 +extern kern_return_t AsusSMC_kern_stop(kmod_info_t *, void *);
-+KMOD_EXPLICIT_DECL(com.samuelnotfound.AsusSMC, "$RELEASE_VERSION", AsusSMC_kern_start, AsusSMC_kern_stop)
++KMOD_EXPLICIT_DECL(com.hieplpvip.AsusSMC, "$RELEASE_VERSION", AsusSMC_kern_start, AsusSMC_kern_stop)
 +__private_extern__ kmod_start_func_t *_realmain = 0;
 +__private_extern__ kmod_stop_func_t *_antimain = 0;
 +__private_extern__ int _kext_apple_cc = __APPLE_CC__;
@@ -568,7 +597,7 @@ index 0000000..f625e48
 +import pathlib, plistlib, sys
 +version, target = sys.argv[1:]
 +values = {'$(DEVELOPMENT_LANGUAGE)':'en', '$(EXECUTABLE_NAME)':'AsusSMC',
-+    '$(PRODUCT_BUNDLE_IDENTIFIER)':'com.samuelnotfound.AsusSMC', '$(PRODUCT_NAME)':'AsusSMC', '$(MODULE_VERSION)':version}
++    '$(PRODUCT_BUNDLE_IDENTIFIER)':'com.hieplpvip.AsusSMC', '$(PRODUCT_NAME)':'AsusSMC', '$(MODULE_VERSION)':version}
 +def expand(item):
 +    if isinstance(item, dict): return {k:expand(v) for k,v in item.items()}
 +    if isinstance(item, list): return [expand(v) for v in item]
@@ -580,6 +609,7 @@ index 0000000..f625e48
 +PY
 +xcrun clang++ -std=c++14 -Wall -Wextra -Werror Tests/protocol.cpp -o "$BUILD_DIR/protocol-test"
 +"$BUILD_DIR/protocol-test"
++python3 Tests/boot-contract.py
 +codesign --force --sign - "$BUILD_DIR/AsusSMC.kext"
 +codesign --verify --strict "$BUILD_DIR/AsusSMC.kext"
 +echo "Built AsusSMC $RELEASE_VERSION in $BUILD_DIR. Nothing was installed or loaded."
