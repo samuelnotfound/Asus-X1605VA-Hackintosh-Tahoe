@@ -1,0 +1,585 @@
+diff --git a/.gitignore b/.gitignore
+index 3406c5d..eed3f6e 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -11,3 +11,5 @@ build
+ .svace-dir
+ cov-int
+ /MacKernelSDK
++/.deps/
++/build-x1605va/
+diff --git a/AsusSMC.xcodeproj/project.pbxproj b/AsusSMC.xcodeproj/project.pbxproj
+index 3228b3f..d684b12 100644
+--- a/AsusSMC.xcodeproj/project.pbxproj
++++ b/AsusSMC.xcodeproj/project.pbxproj
+@@ -520,7 +520,7 @@
+ 				CLANG_WARN_UNREACHABLE_CODE = YES;
+ 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+ 				COPY_PHASE_STRIP = NO;
+-				CURRENT_PROJECT_VERSION = 1.4.1;
++				CURRENT_PROJECT_VERSION = 1.0.0;
+ 				DEBUG_INFORMATION_FORMAT = dwarf;
+ 				ENABLE_STRICT_OBJC_MSGSEND = YES;
+ 				ENABLE_TESTABILITY = YES;
+@@ -542,7 +542,7 @@
+ 				KERNEL_FRAMEWORK_HEADERS = "$(PROJECT_DIR)/MacKernelSDK/Headers";
+ 				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/MacKernelSDK/Library/x86_64";
+ 				MACOSX_DEPLOYMENT_TARGET = 10.11;
+-				MODULE_VERSION = 1.4.1;
++				MODULE_VERSION = 1.0.0;
+ 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+ 				MTL_FAST_MATH = YES;
+ 				ONLY_ACTIVE_ARCH = YES;
+@@ -582,7 +582,7 @@
+ 				CLANG_WARN_UNREACHABLE_CODE = YES;
+ 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+ 				COPY_PHASE_STRIP = NO;
+-				CURRENT_PROJECT_VERSION = 1.4.1;
++				CURRENT_PROJECT_VERSION = 1.0.0;
+ 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+ 				ENABLE_NS_ASSERTIONS = NO;
+ 				ENABLE_STRICT_OBJC_MSGSEND = YES;
+@@ -598,7 +598,7 @@
+ 				KERNEL_FRAMEWORK_HEADERS = "$(PROJECT_DIR)/MacKernelSDK/Headers";
+ 				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/MacKernelSDK/Library/x86_64";
+ 				MACOSX_DEPLOYMENT_TARGET = 10.11;
+-				MODULE_VERSION = 1.4.1;
++				MODULE_VERSION = 1.0.0;
+ 				MTL_ENABLE_DEBUG_INFO = NO;
+ 				MTL_FAST_MATH = YES;
+ 				SDKROOT = macosx;
+@@ -627,7 +627,7 @@
+ 				MODULE_START = "$(PRODUCT_NAME)_kern_start";
+ 				MODULE_STOP = "$(PRODUCT_NAME)_kern_stop";
+ 				OTHER_CPLUSPLUSFLAGS = "-Wno-inconsistent-missing-override";
+-				PRODUCT_BUNDLE_IDENTIFIER = com.hieplpvip.AsusSMC;
++				PRODUCT_BUNDLE_IDENTIFIER = com.samuelnotfound.AsusSMC;
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				RUN_CLANG_STATIC_ANALYZER = YES;
+ 				WRAPPER_EXTENSION = kext;
+@@ -653,7 +653,7 @@
+ 				MODULE_START = "$(PRODUCT_NAME)_kern_start";
+ 				MODULE_STOP = "$(PRODUCT_NAME)_kern_stop";
+ 				OTHER_CPLUSPLUSFLAGS = "-Wno-inconsistent-missing-override";
+-				PRODUCT_BUNDLE_IDENTIFIER = com.hieplpvip.AsusSMC;
++				PRODUCT_BUNDLE_IDENTIFIER = com.samuelnotfound.AsusSMC;
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				WRAPPER_EXTENSION = kext;
+ 			};
+diff --git a/AsusSMC/AsusSMC.cpp b/AsusSMC/AsusSMC.cpp
+index c3c3fc5..5e1879a 100755
+--- a/AsusSMC/AsusSMC.cpp
++++ b/AsusSMC/AsusSMC.cpp
+@@ -6,6 +6,9 @@
+ //
+ 
+ #include "AsusSMC.hpp"
++#include "X1605VAProtocol.hpp"
++#include <IOKit/IOUserClient.h>
++#include <mach/task.h>
+ 
+ bool ADDPR(debugEnabled) = false;
+ uint32_t ADDPR(debugPrintDelay) = 0;
+@@ -25,6 +28,8 @@ bool AsusSMC::init(OSDictionary *dict) {
+ 
+     atomic_init(&currentLux, 0);
+     atomic_init(&currentFanSpeed, 0);
++    atomic_init(&fanControlReady, false);
++    atomic_init(&pendingFanCommand, 0);
+ 
+     return true;
+ }
+@@ -70,8 +75,25 @@ bool AsusSMC::start(IOService *provider) {
+ 
+     initALSDevice();
+ 
+-    initEC0Device();
++    x1605vaFan = checkKernelArgument("-x1605vafan");
++    setProperty("X1605VA-FanPatch", "1.0.0");
++    if (x1605vaFan) {
++        // BIOS 305 WMI DSTS returns RPM/100; legacy TACH applies an inverse formula.
++        isTACHAvailable = false;
++        setProperty("FanBackend", "X1605VA-WMI");
++        refreshFan();
++    } else {
++        initEC0Device();
++    }
+ 
++    fanControlAllowed = x1605vaFan && checkKernelArgument("-x1605vafancontrol");
++    setProperty("FanControlAllowed", fanControlAllowed);
++    setProperty("X1605VA-ControlAPIVersion", X1605VA::ControlAPIVersion, 32);
++    setProperty("X1605VA-UpstreamCommit", "c15d2f297c86b65a3cb866cc2bcece595c136417");
++    if (x1605vaFan) {
++        initKeyboardDevice();
++    }
++    // No thermal-profile or fan-mode write is performed at startup.
+     initBattery();
+ 
+     initVirtualKeyboard();
+@@ -112,6 +134,7 @@ bool AsusSMC::start(IOService *provider) {
+ }
+ 
+ void AsusSMC::stop(IOService *provider) {
++    atomic_store_explicit(&fanControlReady, false, memory_order_release);
+     if (poller) {
+         poller->cancelTimeout();
+     }
+@@ -123,6 +146,7 @@ void AsusSMC::stop(IOService *provider) {
+     }
+     OSSafeReleaseNULL(workloop);
+     OSSafeReleaseNULL(poller);
++    OSSafeReleaseNULL(keyboardDevice);
+     OSSafeReleaseNULL(command_gate);
+ 
+     _publishNotify->remove();
+@@ -442,7 +466,6 @@ bool AsusSMC::refreshALS(bool post) {
+ 
+     if (post) {
+         VirtualSMCAPI::postInterrupt(SmcEventALSChange);
+-        poller->setTimeoutMS(SensorUpdateTimeoutMS);
+     }
+ 
+     DBGLOG("als", "refreshALS lux %u", lux);
+@@ -450,7 +473,124 @@ bool AsusSMC::refreshALS(bool post) {
+     return ret == kIOReturnSuccess;
+ }
+ 
++
++// The property handler only enqueues; firmware calls happen on the existing
++// sensor workloop, serialized with polling, outside the client's property call.
++IOReturn AsusSMC::setProperties(OSObject *properties) {
++    auto dict = OSDynamicCast(OSDictionary, properties);
++    if (!dict || dict->getCount() != 2) return kIOReturnBadArgument;
++    if (!atomic_load_explicit(&fanControlReady, memory_order_acquire)) return kIOReturnNotReady;
++    const bool keyboard = dict->getObject("KeyboardPercent") != nullptr;
++    const bool administrator = IOUserClient::clientHasPrivilege(current_task(), kIOClientPrivilegeAdministrator) == kIOReturnSuccess;
++    if (!administrator && (!keyboard || IOUserClient::clientHasPrivilege(current_task(), kIOClientPrivilegeLocalUser) != kIOReturnSuccess))
++        return kIOReturnNotPrivileged;
++    if (keyboard ? !keyboardDevice : !fanControlAllowed) return kIOReturnNotReady;
++    auto cmd = OSDynamicCast(OSNumber, dict->getObject(keyboard ? "KeyboardPercent" : "FanCommand"));
++    auto id = OSDynamicCast(OSNumber, dict->getObject(keyboard ? "KeyboardRequestID" : "FanRequestID"));
++    if (!cmd || !id || (keyboard ? cmd->unsigned64BitValue() > 100 :
++        (cmd->unsigned64BitValue() < 1 || cmd->unsigned64BitValue() > 5)) ||
++        id->unsigned64BitValue() == 0 || id->unsigned64BitValue() > UINT32_MAX)
++        return kIOReturnBadArgument;
++    uint64_t expected = 0;
++    const uint32_t operation = keyboard ? 0x100U + cmd->unsigned32BitValue() : cmd->unsigned32BitValue();
++    const uint64_t request = (id->unsigned64BitValue() << 32) | operation;
++    if (!atomic_compare_exchange_strong_explicit(&pendingFanCommand, &expected, request,
++                                                memory_order_release, memory_order_relaxed))
++        return kIOReturnBusy;
++    return kIOReturnSuccess;
++}
++
++void AsusSMC::processFanCommand() {
++    if (!atomic_load_explicit(&fanControlReady, memory_order_acquire)) return;
++    const uint64_t request = atomic_load_explicit(&pendingFanCommand, memory_order_acquire);
++    if (!request) return;
++    const uint32_t cmd = static_cast<uint32_t>(request);
++    const uint32_t id = static_cast<uint32_t>(request >> 32);
++    if (cmd >= 0x100U && cmd <= 0x164U) {
++        const uint32_t percent = cmd - 0x100U;
++        auto arg = OSNumber::withNumber(percent, 32);
++        uint32_t result = 0xff;
++        IOReturn ret = kIOReturnNoMemory;
++        if (arg && keyboardDevice) {
++            OSObject *args[] = {arg};
++            ret = keyboardDevice->evaluateInteger("SKPC", &result, args, 1);
++        }
++        OSSafeReleaseNULL(arg);
++        const bool success = ret == kIOReturnSuccess && result == percent;
++        setProperty("KeyboardCommandSucceeded", success);
++        setProperty("KeyboardCommandReply", static_cast<uint64_t>(ret), 32);
++        setProperty("KeyboardCompletedRequestID", id, 32);
++        atomic_store_explicit(&pendingFanCommand, 0, memory_order_release);
++        return;
++    }
++    // 1=automatic, 2=full speed; 3=standard, 4=whisper, 5=performance.
++    // Vivobook profile numbering is different from ROG.
++    const uint32_t device = cmd <= 2 ? ASUS_WMI_DEVID_CPU_FAN_CTRL : 0x00110019;
++    const uint32_t value = cmd <= 2 ? cmd - 1 : cmd - 3;
++    SYSLOG("fan", "request %u: DEVS device %x value %u", id, device, value);
++    const int reply = wmi_evaluate_method(ASUS_WMI_METHODID_DEVS, device, value);
++    setProperty("FanCommandReply", static_cast<uint64_t>(static_cast<uint32_t>(reply)), 32);
++    setProperty("FanCommandSucceeded", reply == 1);
++    if (reply == 1 && cmd <= 2) setProperty("FanRequestedMode", cmd - 1, 32);
++    // Publish completion ID last, after the reply. This is an acknowledgement,
++    // not physical verification of the resulting fan mode.
++    setProperty("FanCompletedRequestID", static_cast<uint64_t>(id), 32);
++    SYSLOG("fan", "request %u: reply %x", id, reply);
++    atomic_store_explicit(&pendingFanCommand, 0, memory_order_release);
++}
++
++// Use the existing percentage-backlight SSDT interface; do not guess EC offsets
++// or install/rename ACPI objects. Discovery never writes to the firmware.
++void AsusSMC::initKeyboardDevice() {
++    auto dict = IOService::nameMatching("PNP0C09");
++    auto iterator = dict ? IOService::getMatchingServices(dict) : nullptr;
++    OSSafeReleaseNULL(dict);
++    if (iterator) {
++        while (auto entry = iterator->getNextObject()) {
++            auto device = OSDynamicCast(IOACPIPlatformDevice, entry);
++            if (device && device->validateObject("GKPC") == kIOReturnSuccess &&
++                device->validateObject("SKPC") == kIOReturnSuccess) {
++                keyboardDevice = device;
++                keyboardDevice->retain();
++                break;
++            }
++        }
++        iterator->release();
++    }
++    setProperty("KeyboardControlAvailable", keyboardDevice != nullptr);
++}
++
++void AsusSMC::refreshDeviceSettings() {
++    if (!x1605vaFan) return;
++    const int raw = wmi_get_devstate(0x00110019);
++    uint32_t profile = 0;
++    const bool valid = X1605VA::decodeProfile(static_cast<uint32_t>(raw), profile);
++    setProperty("ThermalProfileValid", valid);
++    if (valid) setProperty("ThermalProfile", profile, 32);
++    uint32_t percent = 0xff;
++    const bool keyboardValid = keyboardDevice &&
++        keyboardDevice->evaluateInteger("GKPC", &percent) == kIOReturnSuccess && percent <= 100;
++    setProperty("KeyboardReadingValid", keyboardValid);
++    if (keyboardValid) setProperty("KeyboardPercent", percent, 32);
++}
++
+ bool AsusSMC::refreshFan() {
++    if (x1605vaFan) {
++        const int raw = wmi_get_devstate(ASUS_WMI_DEVID_CPU_FAN_CTRL);
++        // Check unsupported/error BEFORE testing the presence bit.
++        uint16_t rpm = 0;
++        const bool valid = X1605VA::decodeRPM(static_cast<uint32_t>(raw), rpm);
++        setProperty("FanReadingValid", valid);
++        setProperty("FanRawStatus", static_cast<uint64_t>(static_cast<uint32_t>(raw)), 32);
++        if (!valid) {
++            // Preserve the last sample; validity is separately exposed.
++            return false;
++        }
++        atomic_store_explicit(&currentFanSpeed, static_cast<uint16_t>(rpm), memory_order_release);
++        setProperty("FanRPM", static_cast<uint64_t>(rpm), 32);
++        setProperty("FanSamples", ++fanSamples, 64);
++        return true;
++    }
+     uint32_t speed = 10000;
+ 
+     if (isTACHAvailable) {
+@@ -809,8 +949,6 @@ void AsusSMC::dispatchMessage(int message, void *data) {
+ }
+ 
+ void AsusSMC::registerVSMC() {
+-    vsmcNotifier = VirtualSMCAPI::registerHandler(vsmcNotificationHandler, this);
+-
+     ALSSensor sensor {ALSSensor::Type::Unknown7, true, 6, false};
+     ALSSensor noSensor {ALSSensor::Type::NoSensor, false, 0, false};
+     SMCALSValue::Value emptyValue;
+@@ -861,7 +999,7 @@ void AsusSMC::registerVSMC() {
+         0, SmcKeyTypeFpe2, new F0Ac(&currentFanSpeed),
+         SMC_KEY_ATTRIBUTE_READ | SMC_KEY_ATTRIBUTE_FUNCTION));
+ 
+-    FanTypeDescStruct desc;
++    FanTypeDescStruct desc {};
+     lilu_os_strncpy(desc.strFunction, "System Fan", DiagFunctionStrLen);
+ 
+     VirtualSMCAPI::addKey(KeyF0ID, vsmcPlugin.data, VirtualSMCAPI::valueWithData(
+@@ -875,6 +1013,9 @@ void AsusSMC::registerVSMC() {
+     }
+ 
+     qsort(const_cast<VirtualSMCKeyValue *>(vsmcPlugin.data.data()), vsmcPlugin.data.size(), sizeof(VirtualSMCKeyValue), VirtualSMCKeyValue::compare);
++
++    // An existing VirtualSMC service may invoke the callback immediately.
++    vsmcNotifier = VirtualSMCAPI::registerHandler(vsmcNotificationHandler, this);
+ }
+ 
+ bool AsusSMC::vsmcNotificationHandler(void *sensors, void *refCon, IOService *vsmc, IONotifier *notifier) {
+@@ -889,8 +1030,12 @@ bool AsusSMC::vsmcNotificationHandler(void *sensors, void *refCon, IOService *vs
+             self->poller = IOTimerEventSource::timerEventSource(self, [](OSObject *object, IOTimerEventSource *sender) {
+                 auto ls = OSDynamicCast(AsusSMC, object);
+                 if (ls) {
++                    ls->processFanCommand();
+                     ls->refreshALS(true);
+                     ls->refreshFan();
++                    ls->refreshDeviceSettings();
++                    // Fan polling must continue even when no ALS exists.
++                    sender->setTimeoutMS(SensorUpdateTimeoutMS);
+                 }
+             });
+ 
+@@ -909,6 +1054,8 @@ bool AsusSMC::vsmcNotificationHandler(void *sensors, void *refCon, IOService *vs
+                 return false;
+             }
+ 
++            atomic_store_explicit(&self->fanControlReady, true, memory_order_release);
++            self->setProperty("FanPluginSubmitted", true);
+             return true;
+         } else if (ret != kIOReturnUnsupported) {
+             SYSLOG("atk", "Plugin submission failure %X", ret);
+diff --git a/AsusSMC/AsusSMC.hpp b/AsusSMC/AsusSMC.hpp
+index 0c69ddb..d8ae256 100644
+--- a/AsusSMC/AsusSMC.hpp
++++ b/AsusSMC/AsusSMC.hpp
+@@ -45,6 +45,7 @@ public:
+     void stop(IOService *provider) override;
+     IOService *probe(IOService *provider, SInt32 *score) override;
+     IOReturn message(uint32_t type, IOService *provider, void *argument) override;
++    IOReturn setProperties(OSObject *properties) override;
+ 
+     void letSleep();
+     void toggleAirplaneMode();
+@@ -103,6 +104,8 @@ private:
+     void initATKDevice();
+     void initALSDevice();
+     void initEC0Device();
++    void initKeyboardDevice();
++    void refreshDeviceSettings();
+     void initBattery();
+     void initVirtualKeyboard();
+ 
+@@ -116,6 +119,7 @@ private:
+     IOACPIPlatformDevice *atkDevice {nullptr};
+     IOACPIPlatformDevice *alsDevice {nullptr};
+     IOACPIPlatformDevice *ec0Device {nullptr};
++    IOACPIPlatformDevice *keyboardDevice {nullptr};
+     VirtualAppleKeyboard *kbdDevice {nullptr};
+ 
+     ALSForceBits forceBits;
+@@ -139,6 +143,12 @@ private:
+     bool isTouchpadEnabled {true};
+     bool isPanelBackLightOn {true};
+     bool isTACHAvailable {false};
++    bool x1605vaFan {false};
++    uint64_t fanSamples {0};
++    bool fanControlAllowed {false};
++    _Atomic(bool) fanControlReady = ATOMIC_VAR_INIT(false);
++    _Atomic(uint64_t) pendingFanCommand = ATOMIC_VAR_INIT(0);
++    void processFanCommand();
+     bool isBatteryRSOCAvailable {false};
+ 
+     uint32_t panelBrightnessLevel {16};
+diff --git a/AsusSMC/X1605VAProtocol.hpp b/AsusSMC/X1605VAProtocol.hpp
+new file mode 100644
+index 0000000..a24d5d6
+--- /dev/null
++++ b/AsusSMC/X1605VAProtocol.hpp
+@@ -0,0 +1,22 @@
++// X1605VA BIOS 305 protocol helpers. Copyright (c) 2026 samuelnotfound.
++// MIT License; see LICENSE.md.
++#pragma once
++#include <stdint.h>
++
++namespace X1605VA {
++static constexpr uint32_t ControlAPIVersion = 1;
++inline bool decodeRPM(uint32_t raw, uint16_t &rpm) {
++    if (raw == UINT32_MAX || raw == UINT32_MAX - 1 || !(raw & 0x10000U)) return false;
++    const uint32_t value = (raw & 0xffffU) * 100U;
++    if (value > 16383U) return false; // SMC fpe2 cannot represent larger RPM.
++    rpm = static_cast<uint16_t>(value);
++    return true;
++}
++inline bool decodeProfile(uint32_t raw, uint32_t &profile) {
++    if (raw == UINT32_MAX || raw == UINT32_MAX - 1 || !(raw & 0x10000U)) return false;
++    const uint32_t value = raw & 0xffU;
++    if (value > 2) return false;
++    profile = value;
++    return true;
++}
++}
+diff --git a/Tests/protocol.cpp b/Tests/protocol.cpp
+new file mode 100644
+index 0000000..a362454
+--- /dev/null
++++ b/Tests/protocol.cpp
+@@ -0,0 +1,21 @@
++#include "../AsusSMC/X1605VAProtocol.hpp"
++#include <cassert>
++#include <cstdio>
++int main() {
++    uint16_t rpm = 1234;
++    assert(!X1605VA::decodeRPM(0xfffffffeU, rpm) && rpm == 1234);
++    assert(!X1605VA::decodeRPM(0xffffffffU, rpm));
++    assert(!X1605VA::decodeRPM(0, rpm));
++    assert(X1605VA::decodeRPM(0x10000, rpm) && rpm == 0);
++    assert(X1605VA::decodeRPM(0x1000f, rpm) && rpm == 1500);
++    assert(X1605VA::decodeRPM(0x1003a, rpm) && rpm == 5800);
++    assert(X1605VA::decodeRPM(0x100a3, rpm) && rpm == 16300);
++    assert(!X1605VA::decodeRPM(0x100a4, rpm) && rpm == 16300);
++    uint32_t profile = 99;
++    for (uint32_t value = 0; value < 3; ++value)
++        assert(X1605VA::decodeProfile(0x03030000U | value, profile) && profile == value);
++    assert(!X1605VA::decodeProfile(0xfffffffeU, profile));
++    assert(!X1605VA::decodeProfile(0x03030003U, profile));
++    assert(!X1605VA::decodeProfile(1, profile));
++    puts("PASS: RPM decoding, stopped fan, fpe2 limits, unsupported sentinels, and Vivobook profiles.");
++}
+diff --git a/VERSION b/VERSION
+new file mode 100644
+index 0000000..3eefcb9
+--- /dev/null
++++ b/VERSION
+@@ -0,0 +1 @@
++1.0.0
+diff --git a/X1605VA.md b/X1605VA.md
+new file mode 100644
+index 0000000..eb14a62
+--- /dev/null
++++ b/X1605VA.md
+@@ -0,0 +1,84 @@
++# AsusSMC for X1605VA — 1.0.0
++
++The first release of the X1605VA fork is based on `hieplpvip/AsusSMC`
++commit `c15d2f297c86b65a3cb866cc2bcece595c136417`. Upstream MIT licensing
++and copyright notices are retained. The fork identifier is
++`com.samuelnotfound.AsusSMC`; the service class and filename remain
++`AsusSMC` and `AsusSMC.kext`.
++
++## Scope
++
++- Correct BIOS 305 WMI fan RPM decoding and continuous polling.
++- Build and sort SMC keys before VirtualSMC registration.
++- Standard `FNum`, `F0Ac`, and `F0ID` monitoring keys.
++- Root-only Auto/Full Speed and Standard/Whisper/Performance commands.
++- Cached thermal-profile readback from the Vivobook policy endpoint.
++- Percentage keyboard-backlight control through existing `GKPC`/`SKPC`
++  ACPI methods from `SSDT-KBLU` or the combined Assistant SSDT.
++- No new microphone, screen-brightness, trackpad, or hotkey-remapping feature.
++  Existing upstream AsusSMC behavior is retained.
++
++The UI is the separate [X1605VA Settings project](https://github.com/samuelnotfound/Asus-X1605VA-Hackintosh-Tahoe/tree/main/Projects/ASUS/X1605VASettings).
++
++## Versioning
++
++`VERSION` is the SemVer release version, starting at **1.0.0**. The canonical
++build script uses it for the bundle and module versions. Control API version
++1 is a compatibility number. `X1605VA-FanPatch = 1.0.0` is a retained legacy
++diagnostic, not a separately versioned product. The upstream commit identifies
++ancestry independently of fork release numbering.
++
++## Build
++
++```sh
++bash build-x1605va.sh
++```
++
++Requires Command Line Tools. Uses MacKernelSDK
++`3f750085caa17ec3a7880f11c11bf4f48cd6a164`, Lilu 1.7.2 and VirtualSMC 1.3.8
++SDK headers. Output: `build-x1605va/AsusSMC.kext`. Protocol tests and ad-hoc
++signature verification run during build. Nothing is installed or loaded.
++
++For a deliberate test boot, replace the existing AsusSMC bundle rather than
++adding another copy. Keep Lilu and VirtualSMC before it. `-x1605vafan` enables
++monitoring/backlight; `-x1605vafancontrol` additionally permits administrator
++fan commands. Keep the existing working keyboard SSDT. No new SSDT is added.
++Avoid overlapping fan/ALS keys from SMCSuperIO or SMCLightSensor in the test
++configuration. The build never changes EFI or boot arguments.
++
++## Interface
++
++All new firmware operations run on the sensor workloop. The property handler
++validates and queues one request; it never evaluates ACPI. User-space reads
++consume cached IORegistry properties.
++
++Fan requests contain exactly `FanCommand` and `FanRequestID` (nonzero uint32).
++They require administrator privilege, both boot arguments, and a ready
++workloop. Commands: 1 Auto, 2 Full Speed, 3 Standard, 4 Whisper, 5 Performance.
++Results use `FanCompletedRequestID`, `FanCommandReply`, and
++`FanCommandSucceeded`. Reply 1 is firmware acknowledgement. The older fanctl
++1.0.1 interface remains supported, including unsigned 32-bit request IDs.
++
++Keyboard requests contain exactly `KeyboardPercent` (0–100) and
++`KeyboardRequestID` (nonzero uint32). They require local console-user or
++administrator privilege and a discovered `GKPC`/`SKPC` provider. Results use
++`KeyboardCompletedRequestID`, `KeyboardCommandReply`, and
++`KeyboardCommandSucceeded`. No arbitrary EC offsets or method names can be
++submitted. Fan and keyboard writes share one queue.
++
++`ThermalProfile`: 0 Standard, 1 Whisper, 2 Performance.
++`ThermalProfileValid` indicates a valid firmware read. `KeyboardPercent` and
++`KeyboardReadingValid` describe the backlight cache, not measured illumination.
++`FanRequestedMode` is the last acknowledged request in this driver session,
++not independent firmware mode readback.
++
++No new setting is written at boot, login, or wake. No daemon is installed.
++A timeout cannot cancel an in-flight firmware call. Arbitrary RPM targets,
++calibrated minimum/maximum RPM and custom fan curves are not implemented.
++
++## Validation limits
++
++The preceding 1.4.2 driver verified live RPM and physical Auto/Full Speed on
++X1605VA BIOS 305; profile commands received successful firmware replies. The
++1.0.0 additions need a deliberate hardware test. Keyboard control, profile
++readback and sleep/wake are not established by compilation or fixture tests.
+diff --git a/build-x1605va.sh b/build-x1605va.sh
+new file mode 100644
+index 0000000..f625e48
+--- /dev/null
++++ b/build-x1605va.sh
+@@ -0,0 +1,68 @@
++#!/bin/bash
++set -euo pipefail
++cd "$(dirname "$0")"
++TASK_ROOT="$PWD"
++RELEASE_VERSION=$(tr -d '\r\n' < VERSION)
++[[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid VERSION" >&2; exit 1; }
++BUILD_DIR="$TASK_ROOT/build-x1605va"
++DEPS_DIR="${X1605VA_DEPS:-$TASK_ROOT/.deps}"
++mkdir -p "$DEPS_DIR" "$BUILD_DIR/obj" "$BUILD_DIR/AsusSMC.kext/Contents/MacOS"
++if [[ ! -d "$DEPS_DIR/MacKernelSDK/Headers" ]]; then
++  curl --fail --location --silent --show-error https://github.com/acidanthera/MacKernelSDK/archive/3f750085caa17ec3a7880f11c11bf4f48cd6a164.tar.gz -o "$DEPS_DIR/sdk.tar.gz"
++  tar -xzf "$DEPS_DIR/sdk.tar.gz" -C "$DEPS_DIR"
++  mv "$DEPS_DIR/MacKernelSDK-3f750085caa17ec3a7880f11c11bf4f48cd6a164" "$DEPS_DIR/MacKernelSDK"
++fi
++if [[ ! -d "$DEPS_DIR/Lilu.kext/Contents/Resources/Headers" ]]; then
++  curl --fail --location --silent --show-error https://github.com/acidanthera/Lilu/releases/download/1.7.2/Lilu-1.7.2-DEBUG.zip -o "$DEPS_DIR/lilu.zip"
++  mkdir -p "$DEPS_DIR/lilu-download"
++  ditto -x -k "$DEPS_DIR/lilu.zip" "$DEPS_DIR/lilu-download"
++  ditto "$DEPS_DIR/lilu-download/Lilu.kext" "$DEPS_DIR/Lilu.kext"
++fi
++if [[ ! -f "$DEPS_DIR/VirtualSMC.kext/Contents/Resources/VirtualSMCSDK/kern_vsmcapi.hpp" ]]; then
++  curl --fail --location --silent --show-error https://github.com/acidanthera/VirtualSMC/releases/download/1.3.8/VirtualSMC-1.3.8-DEBUG.zip -o "$DEPS_DIR/vsmc.zip"
++  mkdir -p "$DEPS_DIR/vsmc-download"
++  ditto -x -k "$DEPS_DIR/vsmc.zip" "$DEPS_DIR/vsmc-download"
++  ditto "$DEPS_DIR/vsmc-download/Kexts/VirtualSMC.kext" "$DEPS_DIR/VirtualSMC.kext"
++fi
++FLAGS=(-arch x86_64 -mmacosx-version-min=11.0 -mkernel -nostdinc -fno-builtin -fno-common -fno-stack-protector
++  -DKERNEL -DKERNEL_PRIVATE -DDRIVER_PRIVATE -DAPPLE -DNeXT -DPRODUCT_NAME=AsusSMC "-DMODULE_VERSION=$RELEASE_VERSION"
++  -isystem "$(xcrun clang -print-resource-dir)/include" -I"$DEPS_DIR/MacKernelSDK/Headers"
++  -I"$DEPS_DIR/Lilu.kext/Contents/Resources" -I"$DEPS_DIR/VirtualSMC.kext/Contents/Resources"
++  -IAsusSMC -IGlobal -IKernEventServer -IVirtualAppleKeyboard -Os -Wall -Wextra
++  -Wno-unused-parameter -Wno-inconsistent-missing-override)
++for SOURCE in AsusSMC/AsusSMC.cpp AsusSMC/KeyImplementations.cpp VirtualAppleKeyboard/VirtualAppleKeyboard.cpp KernEventServer/KernEventServer.cpp; do
++  xcrun clang++ "${FLAGS[@]}" -fapple-kext -std=gnu++14 -nostdinc++ -fno-exceptions -fno-rtti -fno-use-cxa-atexit -fno-threadsafe-statics \
++    -c "$SOURCE" -o "$BUILD_DIR/obj/$(basename "${SOURCE%.cpp}").o"
++done
++cat > "$BUILD_DIR/kmod_info.c" <<CEND
++#include <mach/mach_types.h>
++extern kern_return_t AsusSMC_kern_start(kmod_info_t *, void *);
++extern kern_return_t AsusSMC_kern_stop(kmod_info_t *, void *);
++KMOD_EXPLICIT_DECL(com.samuelnotfound.AsusSMC, "$RELEASE_VERSION", AsusSMC_kern_start, AsusSMC_kern_stop)
++__private_extern__ kmod_start_func_t *_realmain = 0;
++__private_extern__ kmod_stop_func_t *_antimain = 0;
++__private_extern__ int _kext_apple_cc = __APPLE_CC__;
++CEND
++xcrun clang "${FLAGS[@]}" -c "$BUILD_DIR/kmod_info.c" -o "$BUILD_DIR/obj/kmod_info.o"
++xcrun clang++ -arch x86_64 -mmacosx-version-min=11.0 -nostdlib -Xlinker -kext -Xlinker -export_dynamic \
++  "$BUILD_DIR"/obj/*.o -L"$DEPS_DIR/MacKernelSDK/Library/x86_64" -lkmodc++ -lkmod -lcc_kext \
++  -o "$BUILD_DIR/AsusSMC.kext/Contents/MacOS/AsusSMC"
++python3 - "$RELEASE_VERSION" "$BUILD_DIR" <<'PY'
++import pathlib, plistlib, sys
++version, target = sys.argv[1:]
++values = {'$(DEVELOPMENT_LANGUAGE)':'en', '$(EXECUTABLE_NAME)':'AsusSMC',
++    '$(PRODUCT_BUNDLE_IDENTIFIER)':'com.samuelnotfound.AsusSMC', '$(PRODUCT_NAME)':'AsusSMC', '$(MODULE_VERSION)':version}
++def expand(item):
++    if isinstance(item, dict): return {k:expand(v) for k,v in item.items()}
++    if isinstance(item, list): return [expand(v) for v in item]
++    if isinstance(item, str):
++        for key, value in values.items(): item = item.replace(key, value)
++    return item
++info = expand(plistlib.loads(pathlib.Path('AsusSMC/Info.plist').read_bytes()))
++pathlib.Path(target, 'AsusSMC.kext/Contents/Info.plist').write_bytes(plistlib.dumps(info, sort_keys=False))
++PY
++xcrun clang++ -std=c++14 -Wall -Wextra -Werror Tests/protocol.cpp -o "$BUILD_DIR/protocol-test"
++"$BUILD_DIR/protocol-test"
++codesign --force --sign - "$BUILD_DIR/AsusSMC.kext"
++codesign --verify --strict "$BUILD_DIR/AsusSMC.kext"
++echo "Built AsusSMC $RELEASE_VERSION in $BUILD_DIR. Nothing was installed or loaded."
