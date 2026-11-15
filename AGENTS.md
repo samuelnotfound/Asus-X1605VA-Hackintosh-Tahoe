@@ -4,18 +4,19 @@ Read `docs/DEVELOPMENT-CONTINUATION.md` before changing this repository.
 
 - This is the current public Tahoe repository. Never copy private diagnostics,
   credentials, identity values, EFI backups or chat transcripts here.
-- Active settings project: `Projects/ASUS/AsusControl`, version 1.1.0,
+- Active settings project: `Projects/ASUS/AsusControl`, version 1.1.1,
   displayed as ASUS Control. Keep it separate from deprecated Assistant code.
 - Use broad software names; board names belong in explicit hardware profiles
   and compatibility notes. Only X1605VA BIOS 305 is currently profiled.
-- Preserve the existing MyASUS-style native AppKit design. The document is a
-  feature reference, not a redesign. Fit System Settings width and scroll
-  vertically. No keyboard brightness slider, microphone or screen brightness.
+- Use native SwiftUI Form with grouped rows, leading labels and trailing
+  controls, following the macOS Appearance/Desktop & Dock references. Avoid
+  duplicate fan controls; fit the host size and use one scrolling form. No keyboard brightness slider, microphone or screen brightness.
 - Current scope: fan monitoring/modes, battery care/24h full charge, AC/battery
   profiles, Low Power Mode sync, touchpad, Fn mode, backlight idle timeout and
   system dashboard. Preserve physical four-step keyboard-light cycling.
 - Keep pane, utility, optional login agent and driver release versions aligned
-  through VERSION. Device control API numbering is independent.
+  through VERSION. API 2 permits the existing 1.1.0 driver with the 1.1.1 pane.
+  Device control API numbering is independent.
 - Keep the original AsusSMC identity/license. Export driver source changes from
   its separate checkout against pinned upstream; don't require a published fork.
 - Queue hardware operations on the driver workloop. Property handlers only

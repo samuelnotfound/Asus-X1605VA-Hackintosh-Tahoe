@@ -2,20 +2,20 @@
 #import "Policy.h"
 
 NSDictionary *AsusDefaultPreferences(void) {
-    return @{@"BatteryManaged":@NO, @"BatteryCare":@YES, @"FullChargeUntil":@0,
+    return @{@"FanManaged":@NO, @"ManualProfile":@0, @"BatteryManaged":@NO, @"BatteryCare":@YES, @"FullChargeUntil":@0,
         @"SplitProfiles":@NO, @"ACProfile":@0, @"BatteryProfile":@0,
         @"FollowLowPower":@NO, @"FnManaged":@NO, @"FnHotkeys":@YES,
         @"BacklightSleepMode":@0, @"BacklightTimeout":@60};
 }
 BOOL AsusNeedsAgent(NSDictionary *p) {
-    return [p[@"BatteryManaged"] boolValue] || [p[@"SplitProfiles"] boolValue] ||
+    return [p[@"FanManaged"] boolValue] || [p[@"BatteryManaged"] boolValue] || [p[@"SplitProfiles"] boolValue] ||
         [p[@"FollowLowPower"] boolValue] || [p[@"FnManaged"] boolValue] ||
         [p[@"BacklightSleepMode"] integerValue] != 0;
 }
 NSInteger AsusEffectiveProfile(NSDictionary *p, NSDictionary *system) {
     if ([p[@"FollowLowPower"] boolValue] && [system[@"LowPowerMode"] boolValue]) return 1;
     BOOL ac = [system[@"ACPower"] boolValue];
-    NSInteger profile = [p[ac ? @"ACProfile" : @"BatteryProfile"] integerValue];
+    NSInteger profile = [p[[p[@"SplitProfiles"] boolValue] ? (ac ? @"ACProfile" : @"BatteryProfile") : @"ManualProfile"] integerValue];
     if (profile < 0 || profile > 3) return 0;
     // This is a capability of the current hardware profile, not every ASUS.
     if (!ac && profile == 2 && ![system[@"PerformanceOnBattery"] boolValue]) return 0;
@@ -36,10 +36,12 @@ NSArray<NSDictionary *> *AsusPolicyActions(NSDictionary *p, NSDictionary *h,
         if (![state[@"ChargeIntent"] isEqual:intent])
             [actions addObject:@{@"Kind":@"device", @"Value":@(limit == 80 ? 1 : 2), @"IntentKey":@"ChargeIntent", @"Intent":intent}];
     }
-    if (([p[@"SplitProfiles"] boolValue] || [p[@"FollowLowPower"] boolValue]) && [h[@"ThermalProfileValid"] boolValue] && [system[@"PowerSourceKnown"] boolValue]) {
+    if (([p[@"FanManaged"] boolValue] || [p[@"SplitProfiles"] boolValue] || [p[@"FollowLowPower"] boolValue]) && [h[@"ThermalProfileValid"] boolValue] && [system[@"PowerSourceKnown"] boolValue]) {
         NSInteger profile = AsusEffectiveProfile(p, system);
         NSString *intent = [NSString stringWithFormat:@"profile:%d:%d:%ld", [system[@"ACPower"] boolValue], [system[@"LowPowerMode"] boolValue], (long)profile];
-        if (![state[@"ThermalIntent"] isEqual:intent])
+        BOOL actualMatches = profile == 3 ? [h[@"FanRequestedMode"] integerValue] == 1 :
+            [h[@"ThermalProfile"] integerValue] == profile && [h[@"FanRequestedMode"] integerValue] != 1;
+        if (![state[@"ThermalIntent"] isEqual:intent] || !actualMatches)
             [actions addObject:@{@"Kind":@"device", @"Value":@(profile == 3 ? 10 : 7 + profile), @"IntentKey":@"ThermalIntent", @"Intent":intent}];
     }
     if ([p[@"FnManaged"] boolValue] && [h[@"FnLockAvailable"] boolValue]) {
@@ -64,4 +66,44 @@ NSArray<NSDictionary *> *AsusPolicyActions(NSDictionary *p, NSDictionary *h,
         }
     }
     return actions;
+}
+
+// A successful property submission is an acknowledgement. Confirm the resulting
+// cache before recording an applied intent; never repeat an accepted write.
+static BOOL matches(NSDictionary *action, NSDictionary *hardware) {
+    uint32_t value = [action[@"Value"] unsignedIntValue];
+    if ([action[@"Kind"] isEqual:@"keyboard"])
+        return [hardware[@"KeyboardReadingValid"] boolValue] && [hardware[@"KeyboardPercent"] unsignedIntValue] == value;
+    if (value <= 2) return [hardware[@"ChargeLimitRequested"] integerValue] == (value == 1 ? 80 : 100);
+    if (value <= 4) return [hardware[@"FnLockAvailable"] boolValue] && [hardware[@"FnLockHotkeys"] boolValue] == (value == 3);
+    if (value >= 7 && value <= 9)
+        return [hardware[@"ThermalProfileValid"] boolValue] && [hardware[@"ThermalProfile"] unsignedIntValue] == value - 7 &&
+            [hardware[@"FanRequestedMode"] integerValue] == 0;
+    if (value == 10) return [hardware[@"FanRequestedMode"] integerValue] == 1;
+    return NO;
+}
+BOOL AsusExecutePolicyActions(NSArray<NSDictionary *> *actions, NSMutableDictionary *state,
+    AsusPolicySender sender, AsusPolicyReader reader, NSError **error) {
+    for (NSDictionary *action in actions) {
+        NSString *kind = action[@"Kind"];
+        if ([kind isEqual:@"clear-dim"]) { [state removeObjectForKey:@"Dimmed"]; continue; }
+        if (!sender([kind isEqual:@"keyboard"], [action[@"Value"] unsignedIntValue], error)) return NO;
+        BOOL confirmed = NO;
+        for (unsigned attempt = 0; attempt < 3; ++attempt) {
+            NSDictionary *hardware = reader(error);
+            if (!hardware) return NO;
+            if (matches(action, hardware)) { confirmed = YES; break; }
+        }
+        if (!confirmed) {
+            uint32_t value = [action[@"Value"] unsignedIntValue];
+            NSString *setting = [kind isEqual:@"keyboard"] ? @"the keyboard-light level" : value <= 2 ? @"the charging limit" : value <= 4 ? @"the function-key mode" : value == 10 ? @"Full Speed" : value >= 7 && value <= 9 ? @[@"Standard", @"Whisper", @"Performance"][value - 7] : @"the requested setting";
+            if (error) *error = [NSError errorWithDomain:@"com.samuelnotfound.AsusControl.Policy" code:9
+                userInfo:@{NSLocalizedDescriptionKey:[NSString stringWithFormat:@"Firmware acknowledged %@, but readback did not confirm it. Choose Try Again to reapply it.", setting]}];
+            return NO;
+        }
+        if (action[@"IntentKey"]) state[action[@"IntentKey"]] = action[@"Intent"];
+        if (action[@"SaveKeyboard"]) { state[@"RestoreKeyboard"] = action[@"SaveKeyboard"]; state[@"Dimmed"] = @YES; }
+        if (action[@"Restore"]) [state removeObjectForKey:@"Dimmed"];
+    }
+    return YES;
 }

@@ -38,7 +38,10 @@ int main(void) {
         p[@"FollowLowPower"]=@YES; s[@"LowPowerMode"]=@YES; assert(AsusEffectiveProfile(p,s)==1);
         NSDictionary *a=action(AsusPolicyActions(p,h,s,@{},1000),@"device");
         assert([a[@"Value"] isEqual:@8]);
-        assert(AsusPolicyActions(p,h,s,@{@"ThermalIntent":a[@"Intent"]},1000).count==0);
+        NSMutableDictionary *matching = [h mutableCopy]; matching[@"ThermalProfile"] = @1; matching[@"FanRequestedMode"] = @0;
+        assert(AsusPolicyActions(p,matching,s,@{@"ThermalIntent":a[@"Intent"]},1000).count==0);
+        matching[@"ThermalProfile"] = @0;
+        assert(AsusPolicyActions(p,matching,s,@{@"ThermalIntent":a[@"Intent"]},1000).count==1);
         p=[AsusDefaultPreferences() mutableCopy]; p[@"FnManaged"]=@YES;
         assert([action(AsusPolicyActions(p,h,s,@{},1000),@"device")[@"Value"] isEqual:@3]);
         p[@"FnHotkeys"]=@NO;
@@ -60,6 +63,30 @@ int main(void) {
         assert(AsusPolicyActions(p,@{},s,@{},1000).count==0);
         NSMutableDictionary *missing=[h mutableCopy]; missing[@"KeyboardReadingValid"]=@NO;
         assert(AsusPolicyActions(p,missing,s,@{},1000).count==0);
+        // Manual and Low Power Mode policies use one common profile. No AC/battery
+        // controls compete when source-based switching is off.
+        p=[AsusDefaultPreferences() mutableCopy]; p[@"FanManaged"]=@YES; p[@"ManualProfile"]=@1;
+        s[@"ACPower"]=@YES; s[@"LowPowerMode"]=@NO;
+        assert(AsusNeedsAgent(p) && AsusEffectiveProfile(p,s)==1);
+        p[@"FollowLowPower"]=@YES; p[@"ManualProfile"]=@0;
+        s[@"LowPowerMode"]=@YES; assert(AsusEffectiveProfile(p,s)==1);
+        s[@"LowPowerMode"]=@NO; assert(AsusEffectiveProfile(p,s)==0);
+        NSDictionary *request=@{@"Kind":@"device",@"Value":@8,@"IntentKey":@"ThermalIntent",@"Intent":@"test"};
+        NSMutableDictionary *confirmedState=[NSMutableDictionary dictionary];
+        __block unsigned sends=0, reads=0;
+        NSError *failure=nil;
+        BOOL result=AsusExecutePolicyActions(@[request],confirmedState,^BOOL(BOOL keyboard,uint32_t value,NSError **error) {
+            (void)error; assert(!keyboard && value==8); sends++; return YES;
+        },^NSDictionary *(NSError **error) {
+            (void)error; reads++; return @{@"ThermalProfileValid":@YES,@"ThermalProfile":@0,@"FanRequestedMode":@0};
+        },&failure);
+        assert(!result && sends==1 && reads==3 && failure.code==9 && !confirmedState[@"ThermalIntent"]);
+        result=AsusExecutePolicyActions(@[request],confirmedState,^BOOL(BOOL keyboard,uint32_t value,NSError **error) {
+            (void)keyboard; (void)value; (void)error; sends++; return YES;
+        },^NSDictionary *(NSError **error) {
+            (void)error; return @{@"ThermalProfileValid":@YES,@"ThermalProfile":@1,@"FanRequestedMode":@0};
+        },&failure);
+        assert(result && [confirmedState[@"ThermalIntent"] isEqual:@"test"]);
         puts("PASS: battery deadline, source/LPM profiles, model restrictions, intent deduplication, Fn mode, and idle restore.");
     }
 }

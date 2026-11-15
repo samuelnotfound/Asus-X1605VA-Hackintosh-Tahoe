@@ -11,7 +11,7 @@ index 3406c5d..bbe9ec0 100644
 +
 +/build-device-settings/
 diff --git a/AsusSMC.xcodeproj/project.pbxproj b/AsusSMC.xcodeproj/project.pbxproj
-index 3228b3f..ace970e 100644
+index 3228b3f..78952eb 100644
 --- a/AsusSMC.xcodeproj/project.pbxproj
 +++ b/AsusSMC.xcodeproj/project.pbxproj
 @@ -520,7 +520,7 @@
@@ -28,7 +28,7 @@ index 3228b3f..ace970e 100644
  				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/MacKernelSDK/Library/x86_64";
  				MACOSX_DEPLOYMENT_TARGET = 10.11;
 -				MODULE_VERSION = 1.4.1;
-+				MODULE_VERSION = 1.1.0;
++				MODULE_VERSION = 1.1.1;
  				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
  				MTL_FAST_MATH = YES;
  				ONLY_ACTIVE_ARCH = YES;
@@ -46,7 +46,7 @@ index 3228b3f..ace970e 100644
  				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/MacKernelSDK/Library/x86_64";
  				MACOSX_DEPLOYMENT_TARGET = 10.11;
 -				MODULE_VERSION = 1.4.1;
-+				MODULE_VERSION = 1.1.0;
++				MODULE_VERSION = 1.1.1;
  				MTL_ENABLE_DEBUG_INFO = NO;
  				MTL_FAST_MATH = YES;
  				SDKROOT = macosx;
@@ -522,11 +522,11 @@ index 0000000..0a40679
 +}
 diff --git a/DEVICE-SETTINGS.md b/DEVICE-SETTINGS.md
 new file mode 100644
-index 0000000..1c6ad3b
+index 0000000..c5abbfe
 --- /dev/null
 +++ b/DEVICE-SETTINGS.md
 @@ -0,0 +1,116 @@
-+# AsusSMC device settings — ASUS Control 1.1.0
++# AsusSMC device settings — ASUS Control 1.1.1
 +
 +Based on `hieplpvip/AsusSMC` commit
 +`c15d2f297c86b65a3cb866cc2bcece595c136417`. Original MIT licensing and notices
@@ -549,7 +549,7 @@ index 0000000..1c6ad3b
 +`3f750085caa17ec3a7880f11c11bf4f48cd6a164`, Lilu 1.7.2 and VirtualSMC 1.3.8
 +SDK headers. Output: `build-device-settings/AsusSMC.kext`. Build runs decoder,
 +command-boundary, startup-contract and signature checks. It never installs or
-+loads the result. Release versions derive from `VERSION` (1.1.0); control API
++loads the result. Release versions derive from `VERSION` (1.1.1); control API
 +2 is independent of release numbering.
 +
 +Select a profile with `-asusctrl asusctrlprofile=x1605va305`. Add
@@ -561,11 +561,11 @@ index 0000000..1c6ad3b
 +
 +## Boot boundary
 +
-+1.0.0 froze during verbose boot before login. Its supplied diagnostic was an
-+older WindowServer watchdog report and does not establish the cause.
-+1.0.1 removed added keyboard discovery and settings reads from startup and
-+periodic polling, and restored the original bundle identifier. 1.1.0 retains
-+that boundary and is still an unverified test candidate. Keep the working EFI.
++The user corrected the earlier attribution: the boot stall was unrelated to
++AsusSMC. Driver1.1.0 is running with RPM monitoring and working physical
++Auto/Full Speed. The1.1.1 kext changes version metadata/documentation only;
++userspace is compatible with the existing1.1.0 API2 driver. There is no need to
++replace EFI merely to test the updated native grouped settings pane.
 +
 +Only the previously implemented fan-monitoring path runs automatically. Added
 +settings discovery and queries require an explicit queued userspace request.
@@ -699,11 +699,11 @@ index 0000000..9f806bc
 +}
 diff --git a/VERSION b/VERSION
 new file mode 100644
-index 0000000..9084fa2
+index 0000000..524cb55
 --- /dev/null
 +++ b/VERSION
 @@ -0,0 +1 @@
-+1.1.0
++1.1.1
 diff --git a/build-device-settings.sh b/build-device-settings.sh
 new file mode 100644
 index 0000000..2620a3c

@@ -1,7 +1,7 @@
 # ASUS Control continuation — 2026-11-14
 
 Continue in `samuelnotfound/Asus-X1605VA-Hackintosh-Tahoe` (public).
-Active source: `Projects/ASUS/AsusControl`, **ASUS Control 1.1.0**.
+Active source: `Projects/ASUS/AsusControl`, **ASUS Control 1.1.1**.
 The former `X1605VASettings` project has been renamed, not duplicated.
 Deprecated Assistant and the board-specific touchpad UEFI driver are separate;
 this task did not rename those unrelated projects or the hardware EFI repo.
@@ -10,10 +10,12 @@ chat transcripts, or ignored build/recovery files.
 
 ## User intent and implementation
 
-Preserve the existing MyASUS-style pane design. The supplied document is a
-feature reference only. Remove the keyboard brightness slider; keep physical
-four-step backlight cycling. Adapt pane width with Auto Layout, vertical
-scrolling and compact card stacking. Product/code/build names are now broad:
+Latest user request supersedes the older card design: use native SwiftUI
+Form(.grouped), matching macOS Appearance/Desktop & Dock alignment and grouping.
+Remove overlapping fan controls. Keep one profile-switching policy and show
+only relevant profile choices. No keyboard brightness slider; keep physical
+four-step backlight cycling. The NSHostingView adopts its container on attach
+and autoresizes; the Form owns scrolling. Product/code/build names are now broad:
 ASUS Control, AsusControlPane, asusctl, asuscontrol-agent.
 
 1.1.0 adds battery care80/100, temporary100 for24h, split AC/battery profiles,
@@ -38,7 +40,7 @@ Separate local AsusSMC checkout, branch `asus-control-1.x`, based on upstream
 The requested GitHub fork could not be created: connector has no fork operation,
 local Git no authentication, browser signed out. User chose local build.
 Do not claim `samuelnotfound/AsusSMC` exists or is published until verified.
-Complete source is exported as `Driver/AsusSMC-1.1.0.patch`; build-driver.sh
+Complete source is exported as `Driver/AsusSMC-1.1.1.patch`; build-driver.sh
 applies it in an isolated checkout, so that fork is not a prerequisite.
 
 Keep bundle `AsusSMC.kext`, service AsusSMC and upstream identifier
@@ -71,35 +73,53 @@ DEVS0 normal/1 hotkeys. Profile policy uses AC+>40% battery for Performance
 and AC for Full. Dashboard uses public macOS data; uptime replaces Windows
 startup timing. YogaSMC informed pane/driver separation only; no Lenovo EC code.
 
-## Boot regression and recovery (preserve)
+## Boot history correction and current hardware evidence
 
-1.0.0 froze in verbose boot before login. Its attachment is an older
-WindowServer watchdog report at15:21 after~1800s uptime, predating that build;
-it neither identifies the fault nor proves a graphics/AsusSMC panic.
-1.0.1 removed added keyboard discovery and settings queries from startup and
-periodic polling, restoring the original identifier. 1.1.0 retains that boundary
-and suppresses upstream's automatic80% battery write for the selected profile.
-New settings run only on explicit queued userspace requests after login.
-No physical boot fix is established by structural tests.
+The user explicitly corrected the earlier diagnosis: the boot stall was NOT
+caused by AsusSMC. Do not continue attributing it to the kext or describe these
+builds as a proven boot-regression fix. Earlier diagnostics did not establish
+that fault either. The current running driver is confirmed AsusSMC1.1.0, API2,
+with live RPM and thermal-profile cache. The user confirms physical Auto/Full
+Speed works. 1.1.1 changes the userspace UI/policies; kext behavior is unchanged
+apart from version metadata. Existing1.1.0 API2 works with the1.1.1 pane.
 
-Previous approved recovery restored SYSTEM's AsusSMC.kext byte-for-byte from
-working OPENCORE stock1.4.1. Both configs and OPENCORE were unchanged. Backups
-are ignored under `AsusControl/build/Recovery/Boot-recovery-20261114`.
-Running driver is stock1.4.1, so hardware controls in the candidate pane are
-expected to be unavailable. Do not automatically install the candidate.
-No live EFI or loaded driver was changed during1.1.0 development.
+Previous approved recovery restored SYSTEM from stock OPENCORE1.4.1 while the
+cause was uncertain. Preserve that historical fact and ignored backups, but it
+is no longer the current running-driver state. No EFI or loaded driver was
+changed in1.1.1 development. No new SSDT is needed.
+
+## Saved profile problem and1.1.1 fix
+
+Read-only inspection found the1.1.0 agent alive and updating its state, while
+ThermalIntent described a different requested profile from cached firmware
+readback. The old pane also kept Saved/Waiting indefinitely. This does not
+prove the firmware profile endpoint fails; Auto/Full is a separate command.
+
+1.1.1 records an applied policy only after readback confirms it. Policy drift
+is detected. A failed/mismatched operation halts that revision and presents
+Try Again. Configuration changes get a UUID revision and kickstart the service,
+so a loaded-but-exited job or outdated agent cannot silently swallow work.
+The pane upgrades an already opted-in agent when opened. Tests use injected
+send/read callbacks and never install/start an agent or issue live writes.
+
+Manual now means one chosen profile, persisted by the agent. Source mode
+shows only AC/battery choices; Low Power Mode mode shows one normal profile
+with Whisper override; combined mode retains both. Full Speed is a fourth
+profile-menu choice that sets the separate override; Performance remains an
+automatically regulated firmware thermal policy. No duplicate cards, separate
+fan-mode popup, or two competing policy switches remain.
 
 ## Validation / next hardware step
 
 Local build checks pane/utility/agent universal binaries and matching Intel
 kext, signatures, versions, protocol sentinels/bounds, startup contract,
 policy deadlines/transitions/idle restore, capability gating and offscreen
-640/480/900px layouts in light/dark. Tests use fixtures and never write hardware
+480/660/900px layouts at900px height in light/dark. Tests use fixtures and never write hardware
 or start a service. GitHub Actions repeats source builds; no prebuilt app/DMG
 installation flow is added.
 
-Next: arrange a deliberate recoverable test boot with matching driver and pane
-closed. Establish boot before explicitly querying settings, then test each
-capability independently before opting into background policies. Physical
-battery/Fn/touchpad/timeout behavior, System Settings hosting and sleep/wake
-remain unverified. Do not present build success as hardware validation.
+Next: install only the updated pane and reopen System Settings. The existing
+1.1.0 driver is compatible. Verify full-height hosting, native grouped rows,
+profile readback after applying and AC/battery/LPM transitions. Remaining
+battery/Fn/touchpad/timeout behavior and sleep/wake still need user validation.
+Do not present fixture/build success as physical validation.

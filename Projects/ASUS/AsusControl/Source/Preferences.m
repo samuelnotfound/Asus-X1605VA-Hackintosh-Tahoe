@@ -22,7 +22,9 @@ static BOOL writeJSON(NSString *name, NSDictionary *value, NSError **error) {
 }
 NSDictionary *AsusReadPreferences(void) {
     NSMutableDictionary *preferences = [AsusDefaultPreferences() mutableCopy];
-    [preferences addEntriesFromDictionary:readJSON(@"settings.json")];
+    NSDictionary *saved = readJSON(@"settings.json");
+    [preferences addEntriesFromDictionary:saved];
+    if (!saved[@"ManualProfile"] && saved[@"ACProfile"]) preferences[@"ManualProfile"] = saved[@"ACProfile"];
     return preferences;
 }
 BOOL AsusWritePreferences(NSDictionary *preferences, NSError **error) { return writeJSON(@"settings.json", preferences, error); }
@@ -56,6 +58,7 @@ BOOL AsusRemoveAgent(NSError **error) {
 BOOL AsusConfigureAgent(NSBundle *bundle, NSDictionary *preferences, NSError **error) {
     NSMutableDictionary *saved = [preferences mutableCopy];
     saved[@"SourceBundlePath"] = bundle.bundlePath;
+    saved[@"Revision"] = NSUUID.UUID.UUIDString;
     if (!AsusWritePreferences(saved, error)) return NO;
     if (!AsusNeedsAgent(saved)) return AsusRemoveAgent(error);
     NSURL *original = [bundle.bundleURL URLByAppendingPathComponent:@"Contents/Helpers/asuscontrol-agent"];
@@ -76,8 +79,9 @@ BOOL AsusConfigureAgent(NSBundle *bundle, NSDictionary *preferences, NSError **e
     NSString *domain = [NSString stringWithFormat:@"gui/%u", getuid()];
     NSString *service = [domain stringByAppendingString:@"/com.samuelnotfound.AsusControl.Agent"];
     if (launchctl(@[@"print", service], YES, NULL)) {
-        launchctl(@[@"kill", @"SIGUSR1", service], YES, NULL);
-        return YES;
+        // A loaded job can have exited. Kickstart both restarts an old binary
+        // after an update and reports failure instead of silently losing work.
+        return launchctl(@[@"kickstart", @"-k", service], NO, error);
     }
     return launchctl(@[@"bootstrap", domain, plist.path], NO, error);
 }

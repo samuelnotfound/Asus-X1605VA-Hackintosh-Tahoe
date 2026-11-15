@@ -1,4 +1,4 @@
-# ASUS Control 1.1.0
+# ASUS Control 1.1.1
 
 A native macOS preference pane for ASUS device settings, with a matching
 AsusSMC extension. The software name is independent of the laptop model;
@@ -6,8 +6,9 @@ firmware wiring and restrictions belong in explicit hardware profiles.
 The current profile is **ASUS X1605VA, BIOS 305**. Other models are not yet
 validated, even if they expose similar ASUS WMI interfaces.
 
-The existing MyASUS-style profile cards and native AppKit controls are retained.
-The pane now scrolls vertically and adapts to the System Settings content width.
+The pane uses SwiftUI’s native grouped Form: leading labels, trailing controls,
+system separators and backgrounds, and one scrolling content area. It adopts
+the actual host size rather than keeping its initial frame.
 There is no keyboard-brightness slider, microphone control, or screen-brightness
 control in this project. Physical keyboard-light cycling remains unchanged.
 
@@ -15,10 +16,10 @@ control in this project. Physical keyboard-light cycling remains unchanged.
 
 | Section | Features |
 | --- | --- |
-| Power & Performance | Performance, Standard and Whisper; live fan RPM; Auto/Full Speed; separate AC and battery profiles; optional synchronization with macOS Low Power Mode. |
+| Power & Performance | One profile menu (Standard, Whisper, Performance or Full Speed), live RPM, and one switching policy: Manual, power source, Low Power Mode, or both. |
 | Battery Care | Request an 80% charging limit, or allow 100%; Instant Full-Charge Mode allows 100% for 24 hours before requesting 80% again. |
 | Input Devices | Built-in touchpad enable/disable with inline confirmation; hotkeys or F1–F12 mode; keyboard-backlight inactivity timeout on both power sources or battery only. |
-| System Status | CPU utilization, memory use, battery percentage/health, startup-disk capacity, fan/profile and uptime; shortcuts to Activity Monitor and Storage Settings. |
+| System Status | CPU utilization, memory use, battery percentage, startup-disk capacity, fan/profile and uptime; shortcuts to Activity Monitor and Storage Settings. |
 
 Power Mode Synchronization selects Whisper while macOS Low Power Mode is on,
 then uses the configured profile when it is off. It does not change Low Power
@@ -58,7 +59,7 @@ change boot arguments, modify EFI, load a driver, or start the background agent.
 GitHub Actions performs the same builds and tests; no prebuilt app download or
 DMG installation flow is provided.
 
-The driver source is exported as `Driver/AsusSMC-1.1.0.patch` against the pinned
+The driver source is exported as `Driver/AsusSMC-1.1.1.patch` against the pinned
 upstream commit in `Driver/Upstream.json`. `build-driver.sh` applies it in an
 isolated checkout. An already-published fork is not required. Regenerate the
 patch from the separate AsusSMC checkout with:
@@ -69,11 +70,12 @@ bash Tools/export-driver.sh /path/to/AsusSMC
 
 ## Driver setup
 
-**1.1.0 is an unverified hardware-test candidate.** The earlier 1.0.0 driver
-froze before login. Later source removes the added keyboard discovery and
-settings queries from startup and periodic polling, and restores the upstream
-bundle identifier. Compilation and fixture tests do not establish a boot fix.
-Keep the working recovery EFI when arranging a deliberate test boot.
+The user has confirmed that the earlier boot stall was unrelated to AsusSMC.
+The 1.1.0 driver boots and reports RPM, and physical Automatic/Full Speed works.
+1.1.1 changes the pane and user-session policies; the driver has only a release
+version/documentation update. The pane works with the existing **1.1.0 API 2**
+driver, so an EFI replacement or reboot is not required for this UI update.
+Firmware profile acoustics and the remaining device controls still need testing.
 
 Use one `AsusSMC.kext`, retaining its original `com.hieplpvip.AsusSMC`
 identifier. Lilu and VirtualSMC must precede it. Do not add a second copy.
@@ -103,11 +105,21 @@ temporary full charging, separate power-source profiles, power-mode sync,
 Fn-mode persistence or a backlight timeout installs a **per-user login agent**.
 It uses no Accessibility event tap or root daemon.
 
-The agent applies configured policies after login and samples every five
-seconds. Requests use the driver's serial workloop queue. A firmware timeout
-stops further automatic requests for that configuration; changing a setting or
-starting a new session allows another attempt. Busy submissions can wait for
-the queue, but accepted requests are never automatically resubmitted.
+Choosing a profile persists it and starts the per-user agent. In Manual mode,
+that one chosen profile is applied at login; source-based and Low Power Mode
+switching use the same policy owner. The firmware itself varies RPM within
+Standard, Whisper and Performance. Full Speed is a separate override, not the
+Performance profile.
+
+The agent samples every five seconds. Applying settings writes a new revision
+and kickstarts the service, replacing an outdated or exited process. The pane
+shows Applying until that revision is acknowledged. The agent confirms the
+resulting profile/Fn/light cache before recording an applied intent. Requested
+charging limits remain acknowledgement-only because the firmware has no numeric
+limit readback. Drift from the selected automatic policy is detected; a failed
+or mismatched operation stops writes for that revision and exposes Try Again.
+Busy submissions can wait for the queue. An accepted write is not retried as
+part of confirming its readback.
 
 Files are consistently named:
 
@@ -140,7 +152,7 @@ charging, turn Battery Care off and wait for acknowledgement before removal.
 
 ## Development and validation
 
-The pane, utility, agent and matching driver share SemVer **1.1.0**, sourced
+The pane, utility, agent and matching source build share SemVer **1.1.1**, sourced
 from `VERSION`. Device control API **2** is an independent compatibility number;
 legacy API 1 property names remain for existing tools. New board support should
 add an explicit profile under `AsusSMC/Models/` and validate each endpoint and
@@ -152,8 +164,8 @@ signatures and the startup boundary. UI previews use fixtures and offscreen
 windows. Tests do not change hardware or register the agent.
 
 Earlier fan-only patches verified RPM and physical Auto/Full Speed on the target
-laptop; thermal profiles received firmware acknowledgements. New battery,
-Fn-mode, touchpad, timeout and hosting behavior still need hardware validation.
+laptop; thermal profiles received firmware acknowledgements. New UI hosting, profile-policy confirmation and other device controls still
+need user validation after installing the updated pane.
 Sleep remains unresolved. No Lenovo EC addresses or fan-control code are used;
 [YogaSMC](https://github.com/zhen-zen/YogaSMC) informed the separation between
 the pane and driver. Upstream AsusSMC licensing and notices are preserved.
