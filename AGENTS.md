@@ -4,7 +4,7 @@ Read `docs/DEVELOPMENT-CONTINUATION.md` before changing this repository.
 
 - This is the current public Tahoe repository. Never copy private diagnostics,
   credentials, identity values, EFI backups or chat transcripts here.
-- Active settings project: `Projects/ASUS/AsusControl`, version 1.1.4,
+- Active settings project: `Projects/ASUS/AsusControl`, version 1.1.5,
   displayed as ASUS Control. Keep it separate from deprecated Assistant code.
 - Use broad software names; board names belong in explicit hardware profiles
   and compatibility notes. Only X1605VA BIOS 305 is currently profiled.
@@ -16,7 +16,7 @@ Read `docs/DEVELOPMENT-CONTINUATION.md` before changing this repository.
   charging-limit row. No brightness slider, microphone or screen brightness.
 - Current scope: fan monitoring/modes, battery care/24h full charge,
   direct profiles, touchpad, Fn mode and backlight idle timeout. Preserve physical four-step keyboard-light cycling.
-- Pane, utility and optional login agent share VERSION (1.1.4). Keep AsusSMC's
+- Pane, utility and optional login agent share VERSION (1.1.5). Keep AsusSMC's
   upstream version1.4.1 unchanged. Added settings are API2 / feature revision3.
   Cached DSDT wiring detection replaces boot-argument requirements; no model
   detection based on spoofed SMBIOS. No new firmware discovery at boot.
@@ -24,6 +24,11 @@ Read `docs/DEVELOPMENT-CONTINUATION.md` before changing this repository.
   saved Performance selection on eligible AC. This is the user's latest choice.
   No separate profile-switching UI. Keep the active card legible when disabled.
 - No duplicate content title or current-Fn-mode row. Keep one Fn selector.
+  Card titles are exactly Performance, Standard, Whisper; preserve descriptions.
+- Deliberate Fn selections send once despite a matching firmware mirror.
+  Poll readback with a bounded delay; adopt late confirmation without resending.
+  Fn intents/failures are scoped to driver session and desired mode. Do not
+  equate the Fn acknowledgement or firmware mirror with physical key behavior.
 - Battery Care requests must be refreshed on driver/power-source transitions.
   Cached acknowledgement does not prove charging stops; user observed >80%.
 - Keep the original AsusSMC identity/license. Export driver source changes from

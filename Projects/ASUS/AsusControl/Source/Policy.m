@@ -27,6 +27,10 @@ NSString *AsusChargePolicyContext(NSDictionary *p, NSDictionary *h, NSDictionary
     return [NSString stringWithFormat:@"charge:%ld:driver:%@:ac:%@", (long)limit,
         h[@"DriverSessionID"] ?: h[@"DriverRegistryEntryID"] ?: @"unknown", system[@"PowerSourceKnown"] ? system[@"ACPower"] : @"unknown"];
 }
+NSString *AsusFnPolicyContext(NSDictionary *p, NSDictionary *h) {
+    return [NSString stringWithFormat:@"fn:%@:driver:%@", [p[@"FnHotkeys"] boolValue] ? @"hotkeys" : @"functions",
+        h[@"DriverSessionID"] ?: h[@"DriverRegistryEntryID"] ?: @"unknown"];
+}
 NSArray<NSDictionary *> *AsusPolicyActions(NSDictionary *p, NSDictionary *h,
     NSDictionary *system, NSDictionary *state, NSTimeInterval now) {
     if (![h[@"DeviceControlAllowed"] boolValue]) return @[];
@@ -49,10 +53,12 @@ NSArray<NSDictionary *> *AsusPolicyActions(NSDictionary *p, NSDictionary *h,
     }
     if ([p[@"FnManaged"] boolValue] && [h[@"FnLockAvailable"] boolValue]) {
         BOOL hotkeys = [p[@"FnHotkeys"] boolValue];
-        NSString *intent = hotkeys ? @"fn:hotkeys" : @"fn:functions";
+        NSString *intent = AsusFnPolicyContext(p, h);
         BOOL matches=[h[@"FnLockHotkeys"] boolValue]==hotkeys;
+        // DSTS reads a firmware mirror; a matching value does not establish
+        // that this saved selection was actually sent in this driver session.
         if (![state[@"FnIntent"] isEqual:intent] || !matches)
-            [actions addObject:@{@"Kind":matches ? @"remember" : @"device", @"Value":@(hotkeys ? 3 : 4), @"IntentKey":@"FnIntent", @"Intent":intent}];
+            [actions addObject:@{@"Kind":@"device", @"Value":@(hotkeys ? 3 : 4), @"IntentKey":@"FnIntent", @"Intent":intent}];
     }
     NSInteger sleepMode = [p[@"BacklightSleepMode"] integerValue];
     NSInteger timeout = [p[@"BacklightTimeout"] integerValue];
@@ -92,9 +98,15 @@ BOOL AsusExecutePolicyActions(NSArray<NSDictionary *> *actions, NSMutableDiction
         NSString *kind = action[@"Kind"];
         if ([kind isEqual:@"remember"]) { state[action[@"IntentKey"]]=action[@"Intent"]; continue; }
         if ([kind isEqual:@"clear-dim"]) { [state removeObjectForKey:@"Dimmed"]; continue; }
+        BOOL fn = [action[@"IntentKey"] isEqual:@"FnIntent"];
+        if (fn) [state removeObjectForKey:@"FnPendingIntent"];
         if (!sender([kind isEqual:@"keyboard"], [action[@"Value"] unsignedIntValue], error)) return NO;
+        if (fn) state[@"FnPendingIntent"] = action[@"Intent"];
         BOOL confirmed = NO;
-        for (unsigned attempt = 0; attempt < 3; ++attempt) {
+        // Observe an accepted Fn request for longer; never resend the write.
+        // This runs on the worker, not the UI thread or a kernel workloop.
+        for (unsigned attempt = 0; attempt < (fn ? 10U : 3U); ++attempt) {
+            if (fn && attempt) [NSThread sleepForTimeInterval:0.1];
             NSDictionary *hardware = reader(error);
             if (!hardware) return NO;
             if (matches(action, hardware)) { confirmed = YES; break; }
@@ -107,6 +119,7 @@ BOOL AsusExecutePolicyActions(NSArray<NSDictionary *> *actions, NSMutableDiction
             return NO;
         }
         if (action[@"IntentKey"]) state[action[@"IntentKey"]] = action[@"Intent"];
+        if (fn) [state removeObjectForKey:@"FnPendingIntent"];
         if (action[@"SaveKeyboard"]) { state[@"RestoreKeyboard"] = action[@"SaveKeyboard"]; state[@"Dimmed"] = @YES; }
         if (action[@"Restore"]) [state removeObjectForKey:@"Dimmed"];
     }

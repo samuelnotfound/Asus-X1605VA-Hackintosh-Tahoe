@@ -9,3 +9,4 @@ BOOL AsusExecutePolicyActions(NSArray<NSDictionary *> *actions, NSMutableDiction
 
 // Also used to recover a failed charging request after a driver/power transition.
 NSString *AsusChargePolicyContext(NSDictionary *preferences, NSDictionary *hardware, NSDictionary *system, NSTimeInterval now);
+NSString *AsusFnPolicyContext(NSDictionary *preferences, NSDictionary *hardware);

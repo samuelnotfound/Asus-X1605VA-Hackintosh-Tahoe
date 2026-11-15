@@ -15,7 +15,7 @@ BOOL AsusControlSendDeviceCommand(uint32_t value,NSError **error) {
     (void)error;[commands addObject:@(value)];
     if(value>=7 && value<=9){hardware[@"ThermalProfile"]=@(value-7);hardware[@"FanRequestedMode"]=@0;}
     if(value<=2)hardware[@"ChargeLimitRequested"]=@(value==1?80:100);
-    if(value==4 && !ignoreFn)hardware[@"FnLockHotkeys"]=@NO;
+    if((value==3 || value==4) && !ignoreFn)hardware[@"FnLockHotkeys"]=@(value==3);
     return YES;
 }
 @implementation AsusDeviceEnvironment
@@ -33,7 +33,7 @@ int main(void) { @autoreleasepool {
     assert([commands isEqual:@[@9]] && !state[@"FnIntent"] && !state[@"ChargeIntent"]);
     assert([hardware[@"ThermalProfile"] isEqual:@2]);
     assert(AsusApplyPolicyFamily(p,@"FnIntent",environment,state,&error));
-    assert(([commands isEqual:@[@9,@4]] && [state[@"FnIntent"] isEqual:@"fn:functions"]));
+    assert(([commands isEqual:@[@9,@4]] && [state[@"FnIntent"] isEqual:AsusFnPolicyContext(p,hardware)]));
     // The agent must adopt an already-confirmed foreground selection without
     // issuing a duplicate hardware command.
     assert(AsusApplyPolicyFamily(p,@"ThermalIntent",environment,[NSMutableDictionary dictionary],&error));
@@ -90,6 +90,34 @@ int main(void) { @autoreleasepool {
     hardware[@"DriverSessionID"]=@"boot-b:100";
     assert(AsusApplyPolicyFamily(p,@"all",environment,state,&error));
     assert(([commands isEqual:@[@1,@1,@1]]));
+    // Deliberate selections always send once, even when mirror + intent match;
+    // background reconciliation must then stay quiet.
+    p[@"BatteryManaged"]=@NO;p[@"FnManaged"]=@YES;p[@"FnHotkeys"]=@YES;
+    ignoreFn=NO;hardware[@"FnLockHotkeys"]=@YES;[state removeAllObjects];[commands removeAllObjects];
+    assert(AsusApplyPolicyFamily(p,@"FnIntent",environment,state,&error));
+    assert(AsusApplyPolicyFamily(p,@"all",environment,state,&error));
+    assert(([commands isEqual:@[@3]]));
+    assert(AsusApplyPolicyFamily(p,@"FnIntent",environment,state,&error));
+    assert(([commands isEqual:@[@3,@3]]));
+    // A late status update clears the exact pending error without a second write.
+    ignoreFn=YES;hardware[@"FnLockHotkeys"]=@NO;[commands removeAllObjects];
+    assert(!AsusApplyPolicyFamily(p,@"FnIntent",environment,state,&error));
+    assert([state[@"FnPendingIntent"]isEqual:AsusFnPolicyContext(p,hardware)]);
+    assert(!AsusApplyPolicyFamily(p,@"all",environment,state,&error));
+    assert(([commands isEqual:@[@3]]));
+    hardware[@"FnLockHotkeys"]=@YES;
+    assert(AsusApplyPolicyFamily(p,@"all",environment,state,&error));
+    assert(([commands isEqual:@[@3]]) && !state[@"FnPendingIntent"] && !state[@"FailedFamilies"][@"FnIntent"]);
+    // Reloading the driver invalidates an old success even with the same mirror.
+    hardware[@"DriverSessionID"]=@"boot-c:100";
+    assert(AsusApplyPolicyFamily(p,@"all",environment,state,&error));
+    assert(([commands isEqual:@[@3,@3]]));
+    // An old pending request cannot clear a failure for the opposite selection.
+    hardware[@"FnLockHotkeys"]=@NO;p[@"FnHotkeys"]=@YES;
+    assert(!AsusApplyPolicyFamily(p,@"FnIntent",environment,state,&error));
+    p[@"FnHotkeys"]=@NO;hardware[@"FnLockHotkeys"]=@YES;
+    assert(!AsusApplyPolicyFamily(p,@"all",environment,state,&error));
+    assert(state[@"FailedFamilies"][@"FnIntent"]);
     int first=AsusAcquirePolicyLock(0,&error);assert(first>=0);
     int second=AsusAcquirePolicyLock(0,&error);assert(second<0 && error.code==8);
     AsusReleasePolicyLock(first);second=AsusAcquirePolicyLock(0,&error);assert(second>=0);AsusReleasePolicyLock(second);

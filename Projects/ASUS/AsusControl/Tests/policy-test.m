@@ -21,7 +21,13 @@ int main(void) { @autoreleasepool {
     p=[AsusDefaultPreferences()mutableCopy];p[@"FnManaged"]=@YES;p[@"FnHotkeys"]=@NO;
     assert([action(AsusPolicyActions(p,h,s,@{},1000),@"device")[@"Value"]isEqual:@4]);
     h[@"FnLockHotkeys"]=@NO;
-    assert(action(AsusPolicyActions(p,h,s,@{},1000),@"remember"));
+    // A matching mirror alone cannot substitute for sending the selection.
+    assert([action(AsusPolicyActions(p,h,s,@{},1000),@"device")[@"Value"]isEqual:@4]);
+    h[@"DriverSessionID"]=@"boot-a:1";
+    NSDictionary *appliedFn=@{@"FnIntent":AsusFnPolicyContext(p,h)};
+    assert(AsusPolicyActions(p,h,s,appliedFn,1000).count==0);
+    h[@"DriverSessionID"]=@"boot-b:1";
+    assert(action(AsusPolicyActions(p,h,s,appliedFn,1000),@"device"));
     p=[AsusDefaultPreferences()mutableCopy];p[@"BacklightSleepMode"]=@1;s[@"IdleSeconds"]=@60;
     assert([action(AsusPolicyActions(p,h,s,@{},1000),@"keyboard")[@"Value"]isEqual:@0]);
     h[@"KeyboardPercent"]=@0;s[@"IdleSeconds"]=@0;
@@ -31,5 +37,11 @@ int main(void) { @autoreleasepool {
     BOOL result=AsusExecutePolicyActions(@[request],state,^BOOL(BOOL keyboard,uint32_t value,NSError **failure){(void)keyboard;(void)value;(void)failure;sends++;return YES;},
       ^NSDictionary *(NSError **failure){(void)failure;return @{@"ThermalProfileValid":@YES,@"ThermalProfile":@0,@"FanRequestedMode":@0};},&error);
     assert(!result && sends==1 && error.code==9 && !state[@"ThermalIntent"]);
+    // Fn mirror changes asynchronously: poll reads while sending exactly once.
+    NSDictionary *fn=@{@"Kind":@"device",@"Value":@3,@"IntentKey":@"FnIntent",@"Intent":@"fn:test"};
+    [state removeAllObjects];sends=0;__block unsigned reads=0;
+    result=AsusExecutePolicyActions(@[fn],state,^BOOL(BOOL keyboard,uint32_t value,NSError **failure){(void)keyboard;(void)value;(void)failure;sends++;return YES;},
+      ^NSDictionary *(NSError **failure){(void)failure;reads++;return @{@"FnLockAvailable":@YES,@"FnLockHotkeys":@(reads>=5)};},&error);
+    assert(result && sends==1 && reads==5 && [state[@"FnIntent"]isEqual:@"fn:test"] && !state[@"FnPendingIntent"]);
     puts("PASS: direct profiles, capability restrictions, battery deadline, Fn/idle state and readback mismatch. No switching policies.");
 } }

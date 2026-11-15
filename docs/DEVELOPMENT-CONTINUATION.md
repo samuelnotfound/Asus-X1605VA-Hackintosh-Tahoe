@@ -1,7 +1,7 @@
 # ASUS Control continuation — 2026-11-15
 
 Public repository `samuelnotfound/Asus-X1605VA-Hackintosh-Tahoe`.
-Project `Projects/ASUS/AsusControl`, pane/CLI/agent1.1.4. Keep software names
+Project `Projects/ASUS/AsusControl`, pane/CLI/agent1.1.5. Keep software names
 broad. Only X1605VA BIOS305 wiring is currently profiled. Do not publish private
 diagnostics, identities, raw ACPI tables, ignored backups or transcripts.
 
@@ -45,6 +45,35 @@ UI root/hosting background is transparent, grouped Form scroll background
 hidden, cards use translucent fills. Offscreen fixtures cover widths480/660/900
 and light/dark/material-colored hosts. Real Settings hosting remains user-test.
 
+##1.1.5 Fn and documentation update
+
+Card titles are exactly Performance, Standard, Whisper, keeping the descriptions.
+README now explains firmware RPM regulation versus userspace profile selection,
+load/heat response, Full Speed override and unknown ASUS thermal curves.
+
+Fn software bugs: a matching DSTS mirror was adopted without any command; Fn
+intent/failure persisted across driver sessions; three rapid readbacks could
+fail before firmware state updated; a later matching readback never cleared
+the stopped family or the foreground error banner.
+
+Deliberate Fn selections now force one command. Fn intent includes driver
+session and desired mode; background reconciliation adopts a prior confirmed
+request quietly but sends once in a new session. Up to10 readbacks with100ms
+gaps observe the accepted command, without resending. A pending accepted
+request can be adopted later only for the exact session/mode. Explicit reselect
+retries; an unchanged failure is not rewritten on every tick. Pane policy error
+clears when that revision later applies. Fake-driver tests cover each path.
+
+Live read-only inspection before the update: loaded driver still custom1.1.2,
+agent1.1.4. Saved hotkeys=true, DSTS hotkeys=false, Fn failed. That establishes
+an acknowledged mismatch, not its underlying EC cause. Do not promise the
+userspace fix physically solves the laptop's Fn behavior. No firmware writes,
+service registration, installation or EFI changes were performed in this turn.
+User has not yet tested Fn+Esc. G-Helper uses the same WMI0x00100023 route plus
+an unrelated USB keyboard fallback; do not copy USB reports to this PS/2 device.
+The extended1.4.1 driver from1.1.4 remains unchanged and optional for this pane
+update; no reboot/kext replacement is required to test1.1.5 with custom API2.
+
 ## Driver source and build
 
 Separate AsusSMC checkout, branch
@@ -54,7 +83,7 @@ No published GitHub fork exists; do not claim one. Full diff is exported as
 Upstream MIT notices, identifier `com.hieplpvip.AsusSMC`, service and filename
 remain. Both MODULE_VERSION and CURRENT_PROJECT_VERSION stay upstream1.4.1.
 Settings API2 / feature revision3 identify added features, independently of
-ASUS Control1.1.4. MacKernelSDK/Lilu/VirtualSMC dependencies are pinned.
+ASUS Control1.1.5. MacKernelSDK/Lilu/VirtualSMC dependencies are pinned.
 
 No settings/fan boot arguments required with this new driver. Cached DSDT bytes
 match conservative signatures for the known RPM, thermal and Fn wiring, not

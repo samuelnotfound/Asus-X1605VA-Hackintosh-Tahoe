@@ -72,9 +72,9 @@ private struct SettingsScreen: View {
         Group {
             Section {
                 HStack(spacing:12) {
-                    profileCard(2,title:"Dynamic Performance mode",symbol:"speedometer",detail:"Dynamically maximizes cooling performance for demanding tasks.")
-                    profileCard(0,title:"Standard mode",symbol:"fan",detail:"Dynamically selects the best fan speed for everyday tasks.")
-                    profileCard(1,title:"Whisper mode",symbol:"leaf",detail:"Dynamically minimizes fan speed for the quietest operation.")
+                    profileCard(2,title:"Performance",symbol:"speedometer",detail:"Dynamically maximizes cooling performance for demanding tasks.")
+                    profileCard(0,title:"Standard",symbol:"fan",detail:"Dynamically selects the best fan speed for everyday tasks.")
+                    profileCard(1,title:"Whisper",symbol:"leaf",detail:"Dynamically minimizes fan speed for the quietest operation.")
                 }.listRowInsets(EdgeInsets(top:0,leading:0,bottom:0,trailing:0)).listRowBackground(Color.clear)
             } header: { Text("Fan Profile") } footer: {
                 Text("Dynamic Performance requires AC power and more than 40% battery. Standard is used when these conditions are not met; your Performance selection resumes when they are met again.")

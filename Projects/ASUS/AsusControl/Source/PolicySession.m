@@ -35,7 +35,11 @@ static BOOL applyOne(NSDictionary *p,NSString *family,BOOL foreground,NSDictiona
     if(fan && foreground && [family isEqual:@"ThermalIntent"] && AsusEffectiveProfile(p,system)!=[p[@"ManualProfile"] integerValue])
         unavailable=@"This profile is unavailable on the power source macOS currently reports. Connect the power adapter; Performance also requires more than 40% battery.";
     if(unavailable) { if(error)*error=[NSError errorWithDomain:@"com.samuelnotfound.AsusControl.Policy" code:4 userInfo:@{NSLocalizedDescriptionKey:unavailable}];return NO; }
-    NSArray *all=AsusPolicyActions(p,hardware,system,state,NSDate.date.timeIntervalSince1970);
+    NSMutableDictionary *decisionState=[state mutableCopy];
+    // A deliberate Fn selection/retry must reach firmware even if its status
+    // mirror already equals the requested value.
+    if(foreground && [family isEqual:@"FnIntent"]) [decisionState removeObjectForKey:@"FnIntent"];
+    NSArray *all=AsusPolicyActions(p,hardware,system,decisionState,NSDate.date.timeIntervalSince1970);
     NSMutableArray *selected=[NSMutableArray array];
     for(NSDictionary *action in all) {
         NSString *intent=action[@"IntentKey"];
@@ -60,8 +64,20 @@ BOOL AsusApplyPolicyFamily(NSDictionary *p,NSString *family,AsusDeviceEnvironmen
         @"ThermalIntent":[NSString stringWithFormat:@"driver:%@:power:%@:effective:%ld",
             hardware[@"DriverSessionID"] ?: hardware[@"DriverRegistryEntryID"] ?: @"unknown", system[@"PowerSourceKnown"] ? system[@"ACPower"] : @"unknown",
             (long)AsusEffectiveProfile(p,system)],
-        @"ChargeIntent":AsusChargePolicyContext(p,hardware,system,NSDate.date.timeIntervalSince1970)};
+        @"ChargeIntent":AsusChargePolicyContext(p,hardware,system,NSDate.date.timeIntervalSince1970),
+        @"FnIntent":AsusFnPolicyContext(p,hardware)};
     NSMutableDictionary *failedContexts=[state[@"FailedFamilyContexts"] mutableCopy] ?: [NSMutableDictionary dictionary];
+    // Read-only recovery: an accepted Fn request can complete after the short
+    // foreground observation window. Adopt only its exact target/session.
+    if(all && failures[@"FnIntent"] && [p[@"FnManaged"] boolValue] &&
+        [state[@"FnPendingIntent"] isEqual:contexts[@"FnIntent"]] &&
+        [hardware[@"FnLockAvailable"] boolValue] && hardware[@"FnLockHotkeys"] &&
+        [hardware[@"FnLockHotkeys"] boolValue]==[p[@"FnHotkeys"] boolValue]) {
+        state[@"FnIntent"]=contexts[@"FnIntent"];
+        [state removeObjectForKey:@"FnPendingIntent"];
+        [failures removeObjectForKey:@"FnIntent"];
+        [failedContexts removeObjectForKey:@"FnIntent"];
+    }
     NSArray *families=all ? @[@"ChargeIntent",@"ThermalIntent",@"FnIntent",@"keyboard"] : @[family];
     for(NSString *item in families) {
         // A new effective target, driver session or power source gets one fresh

@@ -15,7 +15,7 @@
     AsusDeviceEnvironment *_monitor;
     NSDictionary *_hardware, *_system, *_preferences, *_agentState;
     BOOL _active, _refreshing, _busy, _refreshStopped;
-    NSString *_lastError;
+    NSString *_lastError, *_policyErrorRevision;
     NSTimeInterval _submittedAt;
 }
 @end
@@ -31,7 +31,7 @@
     return self.mainView;
 }
 - (void)didSelect {
-    _active = YES; _refreshStopped = NO; _lastError = nil;
+    _active = YES; _refreshStopped = NO; _lastError = nil; _policyErrorRevision = nil;
     NSDictionary *state = AsusReadAgentState();
     // Upgrade an already opted-in service when the updated pane is opened.
     if (AsusNeedsAgent(_preferences) && ![state[@"Version"] isEqual:@ASUS_CONTROL_VERSION])
@@ -56,7 +56,11 @@
         dispatch_async(dispatch_get_main_queue(), ^{
             self->_refreshing = NO; if (!self->_active) return;
             self->_hardware = hardware; self->_system = system; self->_preferences = preferences; self->_agentState = agent;
-            if (error.code == 6) { self->_refreshStopped = YES; self->_lastError = error.localizedDescription; }
+            if(self->_policyErrorRevision && [self->_policyErrorRevision isEqual:agent[@"Revision"]] &&
+                [agent[@"Revision"] isEqual:preferences[@"Revision"]] && [agent[@"Result"] isEqual:@"applied"]) {
+                self->_lastError=nil; self->_policyErrorRevision=nil;
+            }
+            if (error.code == 6) { self->_refreshStopped = YES; self->_lastError = error.localizedDescription; self->_policyErrorRevision = nil; }
             [self displayStatus];
         });
     });
@@ -94,7 +98,7 @@
 - (void)savePreferences:(NSDictionary *)preferences { [self savePreferences:preferences family:@"all"]; }
 - (void)savePreferences:(NSDictionary *)preferences family:(NSString *)family {
     if (_busy) return;
-    _busy=YES; _lastError=nil; [self displayStatus];
+    _busy=YES; _lastError=nil; _policyErrorRevision=nil; [self displayStatus];
     dispatch_async(_worker, ^{
         NSError *error=nil;
         int lock=AsusAcquirePolicyLock(3000,&error);
@@ -121,6 +125,7 @@
             self->_busy=NO; self->_preferences=saved; self->_hardware=hardware; self->_agentState=agent;
             self->_submittedAt=NSDate.date.timeIntervalSince1970;
             self->_lastError=success ? nil : error.localizedDescription ?: @"The setting could not be applied.";
+            self->_policyErrorRevision=!success && configured ? saved[@"Revision"] : nil;
             [self displayStatus];
         });
     });
@@ -153,7 +158,7 @@
 - (void)retrySettings { _refreshStopped = NO; [self savePreferences:_preferences]; }
 - (void)setTouchpadEnabled:(BOOL)enabled {
     if (_busy || ![_hardware[@"TrackpadControlAvailable"] boolValue]) return;
-    _busy = YES; _lastError = nil; [self displayStatus];
+    _busy = YES; _lastError = nil; _policyErrorRevision = nil; [self displayStatus];
     dispatch_async(_worker, ^{
         NSError *error = nil;
         BOOL success = AsusControlSendDeviceCommand(enabled ? 5 : 6, &error), confirmed = NO;

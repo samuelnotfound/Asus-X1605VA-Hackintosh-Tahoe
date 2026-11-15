@@ -1,4 +1,4 @@
-# ASUS Control 1.1.4
+# ASUS Control 1.1.5
 
 ASUS device settings in one macOS preference pane, with native SwiftUI grouped
 rows and three large **Performance / Standard / Whisper** profile cards.
@@ -23,6 +23,55 @@ Speed overrides that regulation. Current firmware policy restricts Performance
 to AC+more than40% battery and Full Speed to AC. Explicit foreground requests
 that cannot be applied report the restriction rather than claiming success.
 There are no arbitrary RPM targets or custom curves.
+
+## How automatic fan speed works
+
+**The laptop firmware controls automatic fan RPM.** ASUS Control selects a
+thermal profile through AsusSMC and the laptop's existing ACPI/WMI interface.
+It does not watch which macOS apps you open or predict when you will get busy.
+As a workload produces heat, the firmware's thermal controller responds to the
+hardware's thermal conditions. The exact ASUS sensor inputs, temperature
+thresholds and fan curves have not been verified by this project.
+
+| Selection | What controls the fan |
+| --- | --- |
+| Performance | Firmware automatically regulates RPM with cooling prioritized for demanding tasks. |
+| Standard | Firmware automatically regulates RPM for everyday use. |
+| Whisper | Firmware uses the quieter thermal profile; it does not promise a fixed RPM or a stopped fan. |
+| Full Speed | An explicit override of normal automatic regulation. |
+
+Selecting a profile does not set a particular RPM, and the fan does not have
+to accelerate immediately if the laptop is cool. The displayed RPM is a
+firmware reading. The project does not provide an arbitrary RPM slider,
+custom fan curves or verified manufacturer minimum/maximum speeds.
+
+**Changing profiles on charger removal/reconnection is a separate userspace
+policy.** When Performance is selected, the login agent requests Standard on
+battery or at40% charge or below, then restores Performance on AC above40%.
+Firmware still chooses the RPM within whichever profile is active. The agent
+must be running for that source-dependent selection; automatic thermal RPM
+regulation itself does not depend on the pane staying open.
+
+## Function-key switching
+
+The Function keys selector requests Printed hotkeys or F1–F12 primary behavior
+through the existing firmware Fn-lock command. It is separate from fan control
+and does not add keyboard remapping or an Accessibility event tap.
+
+A deliberate selection now sends one command even if the firmware's status
+mirror already shows that mode. The helper briefly polls readback after the
+acknowledgement instead of resending the write. If readback updates later, the
+agent clears the error and adopts that exact request without another write.
+Saved Fn intents are scoped to the loaded driver session, so an old success or
+failure cannot permanently suppress the next session's selection.
+
+The firmware command returns an acknowledgement even when its nested EC
+operation has not established physical success. A readback error therefore
+remains an error; it is not silently treated as success. Test F1 with and
+without Fn after switching. Physical reliability remains under investigation.
+The standard WMI route is also used in
+[G-Helper's Fn-lock implementation](https://github.com/seerge/g-helper/blob/main/app/Input/InputDispatcher.cs);
+its USB keyboard fallback is not assumed compatible with this PS/2 keyboard.
 
 ## Applying changes
 
@@ -81,7 +130,7 @@ opted-in agent upgrades when the new pane opens. The build does not install it.
 
 Use one `AsusSMC.kext`, keeping the upstream **1.4.1** version and
 `com.hieplpvip.AsusSMC` identifier, with Lilu and VirtualSMC loaded first.
-ASUS Control1.1.4 and AsusSMC1.4.1 are separate projects with separate versions;
+ASUS Control1.1.5 and AsusSMC1.4.1 are separate projects with separate versions;
 `AsusControlAPIVersion=2` and feature revision3 identify the added interfaces.
 
 The extended driver recognizes the supported DSDT wiring from cached table
