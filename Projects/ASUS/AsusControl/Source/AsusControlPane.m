@@ -73,7 +73,7 @@
     if (_lastError.length) { message = _lastError; failed = YES; }
     else if (_busy) message = @"Applying settings…";
     else if (![_hardware[@"DeviceControlAllowed"] boolValue])
-        message = @"Device controls require the matching AsusSMC driver and hardware-profile boot arguments.";
+        message = @"Device controls require the matching AsusSMC functions and compatible firmware.";
     else if (AsusNeedsAgent(preferences)) {
         BOOL same = [_agentState[@"Revision"] isEqual:preferences[@"Revision"]];
         if (same && [_agentState[@"Result"] isEqual:@"failed"]) {
@@ -103,12 +103,16 @@
         BOOL success=NO;
         if(configured) {
             NSMutableDictionary *state=[AsusReadAgentState() mutableCopy];
+            if([family isEqual:@"all"]) [state removeObjectForKey:@"FailedFamilies"];
             success=AsusApplyPolicyFamily(saved,family,self->_monitor,state,&error);
             state[@"Revision"]=saved[@"Revision"] ?: @"";
-            state[@"Result"]=success ? @"applied" : @"failed";
+            NSDictionary *failures=state[@"FailedFamilies"];
+            state[@"Result"]=success && !failures.count ? @"applied" : @"failed";
             state[@"Version"]=@ASUS_CONTROL_VERSION;
             state[@"UpdatedAt"]=@(NSDate.date.timeIntervalSince1970);
-            if(error)state[@"Error"]=error.localizedDescription;else[state removeObjectForKey:@"Error"];
+            if(failures.count)state[@"Error"]=failures.allValues.firstObject;
+            else if(error)state[@"Error"]=error.localizedDescription;
+            else[state removeObjectForKey:@"Error"];
             AsusWriteAgentState(state,NULL);
         }
         AsusReleasePolicyLock(lock);

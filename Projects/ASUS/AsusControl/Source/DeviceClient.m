@@ -3,6 +3,8 @@
 #import <IOKit/IOKitLib.h>
 #include <limits.h>
 #include <unistd.h>
+#include <sys/sysctl.h>
+#include <sys/time.h>
 
 static NSString * const ErrorDomain = @"com.samuelnotfound.AsusControl";
 
@@ -43,13 +45,22 @@ NSDictionary *AsusControlReadStatus(void) {
     io_service_t service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AsusSMC"));
     if (!service) return @{@"Available": @NO};
     NSDictionary *values = properties(service);
+    uint64_t registryID = 0;
+    BOOL identityKnown = IORegistryEntryGetRegistryEntryID(service, &registryID) == KERN_SUCCESS;
     IOObjectRelease(service);
     NSMutableDictionary *status = [NSMutableDictionary dictionaryWithObject:@YES forKey:@"Available"];
+    if (identityKnown) {
+        status[@"DriverRegistryEntryID"] = @(registryID);
+        struct timeval boot = {0}; size_t size = sizeof(boot);
+        if (sysctlbyname("kern.boottime", &boot, &size, NULL, 0) == 0)
+            status[@"DriverSessionID"] = [NSString stringWithFormat:@"%lld.%d:%llu", (long long)boot.tv_sec, (int)boot.tv_usec, (unsigned long long)registryID];
+    }
     NSArray *keys = @[@"AsusSMC-Version", @"X1605VA-ControlAPIVersion", @"FanBackend",
         @"FanRPM", @"FanReadingValid", @"FanSamples", @"FanControlAllowed",
         @"FanRequestedMode", @"ThermalProfile", @"ThermalProfileValid",
         @"KeyboardControlAvailable", @"KeyboardPercent", @"KeyboardReadingValid", @"SettingsRefreshAvailable",
         @"AsusControlAPIVersion", @"AsusControlHardwareProfile", @"DeviceControlAllowed",
+        @"AsusControlRevision", @"AsusControlAutoDetected", @"FnLockRaw", @"FnLockWriteAcknowledged", @"FnLockRequestedHotkeys",
         @"BatteryCareAvailable", @"ChargeLimitRequested", @"BatteryConservativeMode",
         @"FnLockAvailable", @"FnLockHotkeys", @"TrackpadControlAvailable", @"TrackpadReadingValid", @"TrackpadEnabled",
         @"PerformanceOnBattery", @"PerformanceMinimumBattery", @"FullSpeedOnBattery"];
@@ -70,8 +81,8 @@ static BOOL sendCommand(BOOL keyboard, BOOL refresh, BOOL device, uint32_t value
     if (api < 1 || api > 2 || (device && api < 2) ||
         ![before[device ? @"DeviceControlAllowed" : refresh ? @"SettingsRefreshAvailable" : keyboard ? @"KeyboardControlAvailable" : @"FanControlAllowed"] boolValue]) {
         IOObjectRelease(service);
-        return fail(error, device ? @"Device controls require the matching AsusSMC driver and its settings opt-in." : refresh ? @"This driver does not support on-demand settings reads." : keyboard ? @"The keyboard-backlight interface is unavailable." :
-            @"Fan controls are unavailable. Check the AsusSMC version and boot arguments.", 4);
+        return fail(error, device ? @"Device controls require the matching AsusSMC functions and compatible firmware." : refresh ? @"This driver does not support on-demand settings reads." : keyboard ? @"The keyboard-backlight interface is unavailable." :
+            @"Fan controls are unavailable with this driver or firmware.", 4);
     }
     NSString *completed = device ? @"DeviceCompletedRequestID" : refresh ? @"SettingsCompletedRequestID" : keyboard ? @"KeyboardCompletedRequestID" : @"FanCompletedRequestID";
     uint32_t previous = 0;

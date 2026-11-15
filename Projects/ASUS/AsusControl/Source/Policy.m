@@ -21,6 +21,12 @@ NSInteger AsusEffectiveProfile(NSDictionary *p, NSDictionary *system) {
     if (profile == 2 && minimum > 0 && (![system[@"BatteryKnown"] boolValue] || [system[@"BatteryPercent"] integerValue] <= minimum)) return 0;
     return profile;
 }
+NSString *AsusChargePolicyContext(NSDictionary *p, NSDictionary *h, NSDictionary *system, NSTimeInterval now) {
+    BOOL temporary = [p[@"BatteryCare"] boolValue] && [p[@"FullChargeUntil"] doubleValue] > now;
+    NSInteger limit = [p[@"BatteryCare"] boolValue] && !temporary ? 80 : 100;
+    return [NSString stringWithFormat:@"charge:%ld:driver:%@:ac:%@", (long)limit,
+        h[@"DriverSessionID"] ?: h[@"DriverRegistryEntryID"] ?: @"unknown", system[@"PowerSourceKnown"] ? system[@"ACPower"] : @"unknown"];
+}
 NSArray<NSDictionary *> *AsusPolicyActions(NSDictionary *p, NSDictionary *h,
     NSDictionary *system, NSDictionary *state, NSTimeInterval now) {
     if (![h[@"DeviceControlAllowed"] boolValue]) return @[];
@@ -29,8 +35,8 @@ NSArray<NSDictionary *> *AsusPolicyActions(NSDictionary *p, NSDictionary *h,
         BOOL care = [p[@"BatteryCare"] boolValue];
         BOOL temporary = care && [p[@"FullChargeUntil"] doubleValue] > now;
         NSInteger limit = care && !temporary ? 80 : 100;
-        NSString *intent = [NSString stringWithFormat:@"charge:%ld", (long)limit];
-        if (![state[@"ChargeIntent"] isEqual:intent])
+        NSString *intent = AsusChargePolicyContext(p, h, system, now);
+        if (![state[@"ChargeIntent"] isEqual:intent] || [h[@"ChargeLimitRequested"] integerValue] != limit)
             [actions addObject:@{@"Kind":@"device", @"Value":@(limit == 80 ? 1 : 2), @"IntentKey":@"ChargeIntent", @"Intent":intent}];
     }
     if ([p[@"FanManaged"] boolValue] && [h[@"ThermalProfileValid"] boolValue] && [system[@"PowerSourceKnown"] boolValue]) {

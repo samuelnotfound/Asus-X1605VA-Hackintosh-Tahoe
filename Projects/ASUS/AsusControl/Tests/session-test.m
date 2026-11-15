@@ -5,6 +5,8 @@
 static NSMutableDictionary *hardware;
 static NSMutableArray *commands;
 static NSURL *directory;
+static BOOL ignoreFn;
+static NSMutableDictionary *systemState;
 NSURL *AsusSupportDirectory(void) { return directory; }
 NSDictionary *AsusControlReadStatus(void) { return hardware; }
 BOOL AsusControlRefreshSettings(NSError **error) { (void)error; return YES; }
@@ -12,16 +14,18 @@ BOOL AsusControlSendCommand(BOOL keyboard,uint32_t value,NSError **error) { (voi
 BOOL AsusControlSendDeviceCommand(uint32_t value,NSError **error) {
     (void)error;[commands addObject:@(value)];
     if(value>=7 && value<=9){hardware[@"ThermalProfile"]=@(value-7);hardware[@"FanRequestedMode"]=@0;}
-    if(value==4)hardware[@"FnLockHotkeys"]=@NO;
+    if(value<=2)hardware[@"ChargeLimitRequested"]=@(value==1?80:100);
+    if(value==4 && !ignoreFn)hardware[@"FnLockHotkeys"]=@NO;
     return YES;
 }
 @implementation AsusDeviceEnvironment
-- (NSDictionary *)sample { return @{@"PowerSourceKnown":@YES,@"ACPower":@YES,@"BatteryKnown":@YES,@"BatteryPercent":@75}; }
+- (NSDictionary *)sample { return systemState; }
 @end
 int main(void) { @autoreleasepool {
     directory=[[NSURL fileURLWithPath:NSTemporaryDirectory()]URLByAppendingPathComponent:NSUUID.UUID.UUIDString];
     hardware=[@{@"DeviceControlAllowed":@YES,@"ThermalProfileValid":@YES,@"ThermalProfile":@0,@"FanRequestedMode":@0,
         @"FnLockAvailable":@YES,@"FnLockHotkeys":@YES,@"BatteryCareAvailable":@YES} mutableCopy];
+    systemState=[@{@"PowerSourceKnown":@YES,@"ACPower":@YES,@"BatteryKnown":@YES,@"BatteryPercent":@75}mutableCopy];
     commands=[NSMutableArray array];NSMutableDictionary *p=[AsusDefaultPreferences()mutableCopy],*state=[NSMutableDictionary dictionary];
     p[@"FanManaged"]=@YES;p[@"ManualProfile"]=@2;p[@"FnManaged"]=@YES;p[@"FnHotkeys"]=@NO;p[@"BatteryManaged"]=@YES;
     AsusDeviceEnvironment *environment=[[AsusDeviceEnvironment alloc]init];NSError *error=nil;
@@ -34,9 +38,61 @@ int main(void) { @autoreleasepool {
     // issuing a duplicate hardware command.
     assert(AsusApplyPolicyFamily(p,@"ThermalIntent",environment,[NSMutableDictionary dictionary],&error));
     assert(commands.count==2);
+    hardware[@"FnLockHotkeys"]=@YES;ignoreFn=YES;[commands removeAllObjects];
+    assert(!AsusApplyPolicyFamily(p,@"FnIntent",environment,state,&error));
+    assert(state[@"FailedFamilies"][@"FnIntent"]);
+    p[@"ManualProfile"]=@1;p[@"BatteryManaged"]=@NO;
+    assert(!AsusApplyPolicyFamily(p,@"all",environment,state,&error));
+    assert(([commands isEqual:@[@4,@8]]));
+    assert([hardware[@"ThermalProfile"] isEqual:@1]);
+    // Cached Fn failures cannot block AC fallback or restoration.
+    [commands removeAllObjects];p[@"ManualProfile"]=@2;
+    assert(!AsusApplyPolicyFamily(p,@"all",environment,state,&error));
+    systemState[@"ACPower"]=@NO;
+    assert(!AsusApplyPolicyFamily(p,@"all",environment,state,&error));
+    assert(([commands isEqual:@[@9,@7]]));
+    assert([p[@"ManualProfile"] isEqual:@2] && [hardware[@"ThermalProfile"] isEqual:@0]);
+    systemState[@"ACPower"]=@YES;
+    assert(!AsusApplyPolicyFamily(p,@"all",environment,state,&error));
+    assert(([commands isEqual:@[@9,@7,@9]]));
+    systemState[@"BatteryPercent"]=@40;
+    assert(!AsusApplyPolicyFamily(p,@"all",environment,state,&error));
+    assert([commands.lastObject isEqual:@7]);
+    systemState[@"BatteryPercent"]=@75;
+    assert(!AsusApplyPolicyFamily(p,@"all",environment,state,&error));
+    assert([commands.lastObject isEqual:@9]);
+    // An explicit ineligible click is rejected, but does not poison later
+    // background Standard fallback or eligible Performance restoration.
+    systemState[@"ACPower"]=@NO;
+    assert(!AsusApplyPolicyFamily(p,@"ThermalIntent",environment,state,&error));
+    NSUInteger count=commands.count;
+    assert(!AsusApplyPolicyFamily(p,@"all",environment,state,&error));
+    assert(commands.count==count); // Same failed context stays stopped.
+    systemState[@"ACPower"]=@YES;
+    assert(!AsusApplyPolicyFamily(p,@"all",environment,state,&error));
+    assert(!state[@"FailedFamilies"][@"ThermalIntent"]);
+    // Migrate the former background restriction failure once, not every tick.
+    p[@"FnManaged"]=@NO;
+    state[@"FailedFamilies"]=@{@"ThermalIntent":@"Old restriction"};
+    [state removeObjectForKey:@"FailedFamilyContexts"];
+    systemState[@"ACPower"]=@NO;
+    assert(AsusApplyPolicyFamily(p,@"all",environment,state,&error));
+    assert([hardware[@"ThermalProfile"] isEqual:@0]);
+    // Charge requests are adopted within a session and refreshed after source
+    // transitions or driver replacement, even when an old cache says 80.
+    p[@"FanManaged"]=@NO;p[@"FnManaged"]=@NO;p[@"BatteryManaged"]=@YES;
+    hardware[@"DriverSessionID"]=@"boot-a:100";[commands removeAllObjects];
+    assert(AsusApplyPolicyFamily(p,@"all",environment,state,&error));
+    assert(AsusApplyPolicyFamily(p,@"all",environment,state,&error));
+    assert(([commands isEqual:@[@1]]));
+    systemState[@"ACPower"]=@YES;
+    assert(AsusApplyPolicyFamily(p,@"all",environment,state,&error));
+    hardware[@"DriverSessionID"]=@"boot-b:100";
+    assert(AsusApplyPolicyFamily(p,@"all",environment,state,&error));
+    assert(([commands isEqual:@[@1,@1,@1]]));
     int first=AsusAcquirePolicyLock(0,&error);assert(first>=0);
     int second=AsusAcquirePolicyLock(0,&error);assert(second<0 && error.code==8);
     AsusReleasePolicyLock(first);second=AsusAcquirePolicyLock(0,&error);assert(second>=0);AsusReleasePolicyLock(second);
     [NSFileManager.defaultManager removeItemAtURL:directory error:NULL];
-    puts("PASS: foreground fan/Fn isolation, immediate execution, no duplicate agent write, and cross-process serialization. Fake driver only.");
+    puts("PASS: isolated requests, AC/battery/low-charge fallback and restoration, stale-failure recovery, charge session refresh, deduplication and serialization. Fake driver only.");
 } }

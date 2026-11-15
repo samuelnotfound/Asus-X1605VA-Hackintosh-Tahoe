@@ -11,6 +11,9 @@ build/policy-test
 xcrun clang -fobjc-arc -O2 -Wall -Wextra -Werror Tests/session-test.m Source/PolicySession.m Source/Policy.m \
   -framework Foundation -o build/session-test
 build/session-test
+xcrun clang -fobjc-arc -O2 -Wall -Wextra -Werror Tests/environment-test.m Source/DeviceEnvironment.m \
+  -framework Foundation -framework IOKit -framework CoreGraphics -o build/environment-test
+build/environment-test
 xcrun clang -fobjc-arc -O2 -Wall -Wextra -Werror Tests/pane-test.m \
   -framework Cocoa -framework PreferencePanes -o build/pane-test
 build/pane-test "$PWD/build/ASUS Control.prefPane" "$PWD/build/previews"

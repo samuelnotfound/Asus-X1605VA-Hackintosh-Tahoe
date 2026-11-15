@@ -23,13 +23,14 @@ if not source.exists():
     subprocess.run(['git','-C',str(source),'apply',patch],check=True)
 else:
     actual = subprocess.check_output(['git','-C',str(source),'rev-parse','HEAD'],text=True).strip()
-    if actual != config['commit'] or not (source/'VERSION').is_file():
+    if actual != config['commit']:
         raise SystemExit('Existing driver source is not the expected patched checkout. Use a fresh build directory.')
-if (source/'VERSION').read_text().strip() != config['release']:
-    raise SystemExit('The driver release does not match Upstream.json.')
+import re
+versions=set(re.findall(r'MODULE_VERSION = ([0-9.]+);',(source/'AsusSMC.xcodeproj/project.pbxproj').read_text()))
+if versions != {config['driver_version']}:
+    raise SystemExit('The driver must retain the upstream module version.')
 PY
 fi
-test "$(tr -d '\r\n' < "$SOURCE_DIR/VERSION")" = "$(tr -d '\r\n' < VERSION)"
 bash "$SOURCE_DIR/build-device-settings.sh"
 ditto "$SOURCE_DIR/build-device-settings/AsusSMC.kext" "$SETTINGS_DIR/build/AsusSMC.kext"
 echo "Driver built at $SETTINGS_DIR/build/AsusSMC.kext. Nothing installed."

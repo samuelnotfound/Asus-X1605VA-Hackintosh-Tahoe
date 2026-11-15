@@ -1,6 +1,8 @@
 {
   "repository": "https://github.com/hieplpvip/AsusSMC.git",
   "commit": "c15d2f297c86b65a3cb866cc2bcece595c136417",
-  "release": "1.1.2",
-  "patch": "AsusSMC-1.1.2.patch"
+  "driver_version": "1.4.1",
+  "settings_api": 2,
+  "feature_revision": 3,
+  "patch": "AsusSMC-device-settings.patch"
 }

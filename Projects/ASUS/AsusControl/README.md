@@ -1,4 +1,4 @@
-# ASUS Control 1.1.2
+# ASUS Control 1.1.4
 
 ASUS device settings in one macOS preference pane, with native SwiftUI grouped
 rows and three large **Performance / Standard / Whisper** profile cards.
@@ -32,11 +32,24 @@ cycle or restart a healthy agent. A shared transaction lock serializes pane and
 agent operations. Readback confirms the result before the UI reports success.
 The agent adopts confirmed foreground state without resending it.
 
-The existing1.1.0 driver services requests on a one-second workloop timer.
-The matching1.1.2 kext wakes that timer for accepted commands, removing the
-extra polling wait. Firmware response and physical fan acceleration still take
-time; this is not an instant-RPM guarantee. A firmware
-timeout is surfaced as an error and accepted requests are never blindly retried.
+The extended driver wakes its existing workloop for accepted requests. Firmware
+response and physical fan acceleration still take time. Accepted writes are not
+repeated while waiting for confirmation. Failures are isolated by control, so a
+Fn-mode error cannot stop fan or charging policies.
+
+When Performance is selected, the login agent uses Standard on battery or at
+40% charge or below. It preserves your selection and restores Performance on AC
+with more than40% charge. Selecting Standard or Whisper cancels that preference.
+The cards show the cached active profile, separately from whether a card can be
+selected. Full Speed is disabled without AC. This is userspace policy; firmware
+regulates fan speed within the chosen profile using its own thermal policy.
+
+Battery Care resends its request once after a driver session or power-source
+change and after its24h deadline. Cached intents from a previous boot cannot
+suppress that request. The numerical limit cannot be independently read back:
+firmware acknowledgement does not prove charging stopped. Charging above80%
+was reported and still requires physical retesting; no speculative EC writes
+or undocumented limit encodings have been introduced.
 
 The per-user agent restores chosen settings at login and handles charging
 deadlines and keyboard idle restoration. It uses a live runloop for power
@@ -60,34 +73,34 @@ Builds ad-hoc sign locally, verify signatures and never install or launch them,
 modify EFI, load a kext or register an agent. GitHub Actions repeats source
 builds. No prebuilt app/DMG installation flow is added to the repository.
 
-**Existing AsusSMC1.1.0 API2 is compatible.** For this UI update, quit System
-Settings, replace the installed pane, then reopen Settings. No EFI replacement,
-SSDT change or reboot is required. An already opted-in agent upgrades when the
-new pane is opened. The matching1.1.2 kext is needed to remove the driver queue-polling delay.
-Use the recoverable test EFI and replace its existing AsusSMC bundle for that
-separate test; do not add a duplicate copy. Boot arguments and ACPI stay the same.
-The earlier boot stall was unrelated to AsusSMC, as the user clarified.
+Existing custom API2 drivers remain compatible with the updated pane. Quit
+System Settings, replace the installed pane, then reopen Settings. An already
+opted-in agent upgrades when the new pane opens. The build does not install it.
 
 ## Driver requirements
 
-Use one `AsusSMC.kext`, retaining `com.hieplpvip.AsusSMC`, with Lilu and
-VirtualSMC loaded first. For the current profile:
+Use one `AsusSMC.kext`, keeping the upstream **1.4.1** version and
+`com.hieplpvip.AsusSMC` identifier, with Lilu and VirtualSMC loaded first.
+ASUS Control1.1.4 and AsusSMC1.4.1 are separate projects with separate versions;
+`AsusControlAPIVersion=2` and feature revision3 identify the added interfaces.
 
-```text
--asusctrl asusctrlprofile=x1605va305 -asusctrlsettings
-```
+The extended driver recognizes the supported DSDT wiring from cached table
+bytes. **No fan/settings boot arguments are required.** Recognition is currently
+limited to the known X1605VA BIOS305 wiring; other firmware requires validation.
+Old boot arguments may be removed when using this new build. They can still be
+required by an older custom kext. No SSDT change is needed. Added hardware work
+is queued on the existing workloop, never performed by the property handler.
+Added settings discovery/queries do not run at startup or passive polling.
 
-`-asusctrlfan` is optional for legacy administrator-only fan commands. Old
-`-x1605vafan`/`-x1605vafancontrol` flags remain compatible. Added hardware work
-is queued on the workloop, never performed by the property handler. No added
-settings discovery or polling runs at boot.
+Replacing a kext is a separate recoverable-EFI test; do not add a duplicate copy.
+The earlier boot stall was unrelated to AsusSMC, as the user clarified.
 
 Backlight timeout needs the existing GKPC/SKPC percentage-backlight interface.
 Touchpad control requires supported VoodooI2C and ATKD IANE notification support.
 No new SSDT is installed. Charging limits are driver-acknowledged requests;
 this firmware cannot independently report the numerical charging limit.
 
-Source is provided as `Driver/AsusSMC-1.1.2.patch` against the pinned upstream
+Source is provided as `Driver/AsusSMC-device-settings.patch` against the pinned upstream
 commit in `Driver/Upstream.json`. `build-driver.sh` applies it in isolation.
 Regenerate using `bash Tools/export-driver.sh /path/to/AsusSMC`.
 No published fork is required; upstream MIT licensing and notices are preserved.
@@ -120,7 +133,8 @@ wanted, its Application Support folder. No EFI files are removed.
 ## Validation
 
 Tests cover direct fan/Fn request isolation, no duplicate background writes,
-cross-process serialization, readback mismatches, deadlines, restrictions,
+cross-process serialization, charger fallback/restoration, charge-session refresh,
+power-source parsing, readback mismatches, deadlines, restrictions,
 idle restore, one-pane layout and host resizing. Tests use a fake driver and
 offscreen windows; they never change real firmware or register a service.
 Live latency and the updated pane still need user testing. Earlier code verified

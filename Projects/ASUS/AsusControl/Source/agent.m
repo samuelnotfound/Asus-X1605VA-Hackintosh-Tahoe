@@ -31,8 +31,7 @@ int main(void) {
                         return 0;
                     }
                     NSMutableDictionary *state=[AsusReadAgentState() mutableCopy];
-                    BOOL failed=[state[@"Revision"] isEqual:revision] && [state[@"Result"] isEqual:@"failed"];
-                    if(!failed) {
+                    { // Failed families are skipped independently; other controls keep working.
                         NSError *error=nil;
                         BOOL success=AsusControlRefreshSettings(&error) && AsusApplyPolicyFamily(p,@"all",environment,state,&error);
                         state[@"Revision"]=revision;state[@"Version"]=@ASUS_CONTROL_VERSION;

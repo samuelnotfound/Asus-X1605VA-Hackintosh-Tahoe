@@ -1,84 +1,91 @@
-# ASUS Control continuation — 2026-11-14
+# ASUS Control continuation — 2026-11-15
 
-Active public repository: `samuelnotfound/Asus-X1605VA-Hackintosh-Tahoe`.
-Project `Projects/ASUS/AsusControl`, release1.1.2. Keep software names broad;
-only the X1605VA BIOS305 firmware profile is currently validated. Do not publish
-raw diagnostics, reference documents, user identities or ignored build backups.
+Public repository `samuelnotfound/Asus-X1605VA-Hackintosh-Tahoe`.
+Project `Projects/ASUS/AsusControl`, pane/CLI/agent1.1.4. Keep software names
+broad. Only X1605VA BIOS305 wiring is currently profiled. Do not publish private
+diagnostics, identities, raw ACPI tables, ignored backups or transcripts.
 
-## Latest user requirements (supersede earlier layouts)
+## Current user decisions
 
-- One scrolling pane for all controls. No Power/Input tabs or System Status.
-- Restore the three large Performance, Standard and Whisper cards.
-- Full Speed is a separate switch. Native SwiftUI grouped rows around cards.
-- Remove profile switching entirely: no four-way mode menu, AC/battery profile
-  rules, or Low Power Mode override. Retired saved rules are discarded on read.
-- Remove the Requested charging limit row. Keep Battery Care and24h full charge.
-- Keep touchpad confirmation, Fn-mode selection and keyboard idle timeout.
-- No microphone or screen/keyboard-brightness slider. Physical four-step
-  keyboard light cycling stays unchanged. Deprecated Assistant is separate.
+- One transparent native SwiftUI grouped scrolling form; no tabs/dashboard.
+- Keep three large fan-profile cards and use the user's Windows description
+  text: Dynamic Performance maximizes cooling for demanding tasks, Standard
+  dynamically selects fan speed for everyday tasks, Whisper minimizes noise.
+- Remove duplicate inner ASUS Control heading and Current function-key mode row.
+- Full Speed separate switch, disabled/gray without AC. Active profile remains
+  explicit/legible independently of whether a profile is available to select.
+- No profile-switching UI, custom AC/battery rules or Low Power Mode override.
+- Latest correction: preserve Performance selection, use Standard when off AC
+  or at<=40%, restore Performance when eligible AC returns. Earlier answer to
+  keep Standard was superseded. Selecting another card replaces the preference.
+- Keep Battery Care/24h full charge, touchpad confirmation, Fn mode, keyboard
+  idle timeout. No requested-limit row, brightness slider, microphone or remaps.
+- Keep AsusSMC upstream version unchanged; no required boot arguments.
+- No desktop control, installation, kext loading or live EFI edits authorized.
 
-## Latency fix
+## What changed in1.1.4 (including unpublished1.1.3 work)
 
-The user confirmed controls eventually applied in1.1.1, but they were far too
-slow. That version restarted the helper and processed a whole policy batch for
-each click. Driver1.1.0 also only serviced its queue on the1s sensor timer.
+Foreground changed-family commands and background policies share a file lock.
+Healthy agents receive SIGUSR1; power changes wake a live CFRunLoop. Driver
+requests wake the existing workloop timer. No ACPI in property handlers.
+Errors are isolated by family; Fn failure cannot stop thermal/battery actions.
 
-1.1.2 sends only the changed control from the pane directly. Pane and agent use
-one file lock per transaction. Confirmed state is shared so the agent does not
-resend foreground changes. Healthy agents are signaled; only old/exited jobs
-restart. The agent services a live runloop/power notifications instead of
-sleeping its main thread indefinitely. Errors stop that revision and stay
-visible. Acknowledgement alone does not confirm profile/Fn/light state.
+Bug: all-policy execution decomposed into ThermalIntent, then applied the same
+foreground ineligibility guard. It rejected the automatic Standard fallback.
+The guard is now foreground-only. Failed thermal/charge requests get one new
+attempt when their effective target, power source or driver session changes;
+unchanged failures remain stopped. Legacy failure context migrates once.
 
-The1.1.2 kext schedules its existing workloop timer immediately for accepted
-requests. No ACPI is evaluated by the property handler; no extra startup
-queries or discovery were added. Passive sensor polling remains1s. The old
-1.1.0 API2 driver remains compatible, but retains its request polling delay.
-The new matching kext is needed to test the fastest command dispatch.
+Charging-intent dedup now includes boot/driver identity and power source. It
+also checks the driver's request cache. Resend once after reload/reconnect or
+24h expiry, not every tick. Internal battery's explicit power-source state is
+preferred over the aggregate provider; never infer AC from IsCharging.
 
-Do not claim live latency has been measured from fixture tests. Source tests
-verify isolated foreground requests, no duplicate writes, serialization and
-readback mismatch behavior. GUI tests use offscreen windows only. No live
-service or firmware was changed during development.
+UI root/hosting background is transparent, grouped Form scroll background
+hidden, cards use translucent fills. Offscreen fixtures cover widths480/660/900
+and light/dark/material-colored hosts. Real Settings hosting remains user-test.
 
-## Driver and hardware facts
+## Driver source and build
 
-Separate AsusSMC checkout, branch `asus-control-1.x`, pinned upstream
-`c15d2f297c86b65a3cb866cc2bcece595c136417`. A GitHub fork could not be created;
-user chose local development. Do not claim it is published. Complete changes
-are exported as `Driver/AsusSMC-1.1.2.patch`; build-driver.sh applies in isolation.
-Keep upstream MIT notices, identifier `com.hieplpvip.AsusSMC`, service AsusSMC
-and AsusSMC.kext filename. Control API2; legacy aliases and fan commands remain.
+Separate AsusSMC checkout, branch
+`asus-control-1.x`; pinned upstream `c15d2f297c86b65a3cb866cc2bcece595c136417`.
+No published GitHub fork exists; do not claim one. Full diff is exported as
+`Driver/AsusSMC-device-settings.patch` and applied by build-driver.sh in isolation.
+Upstream MIT notices, identifier `com.hieplpvip.AsusSMC`, service and filename
+remain. Both MODULE_VERSION and CURRENT_PROJECT_VERSION stay upstream1.4.1.
+Settings API2 / feature revision3 identify added features, independently of
+ASUS Control1.1.4. MacKernelSDK/Lilu/VirtualSMC dependencies are pinned.
 
-Boot arguments: `-asusctrl asusctrlprofile=x1605va305 -asusctrlsettings`.
-Optional `-asusctrlfan` enables older administrator-only fan commands. Existing
-GKPC/SKPC ACPI is needed for keyboard timeout; VoodooI2C/IANE(0x6B) for touchpad.
-No new SSDT. All writes/readback are explicit requests on the existing workloop.
+No settings/fan boot arguments required with this new driver. Cached DSDT bytes
+match conservative signatures for the known RPM, thermal and Fn wiring, not
+spoofed Mac SMBIOS. No added ACPI discovery or queries at startup/passive polling.
+Existing GKPC/SKPC ACPI is needed for keyboard timeout; VoodooI2C/IANE(0x6B)
+for touchpad. No new SSDT. Older custom API2 drivers remain pane-compatible but
+may still need their former boot arguments. Do not remove flags for an old kext.
 
-FanDSTS0x00110013: presence + low16×100RPM, reject FFFFFFFE/FFFFFFFF and fpe2
-overflow. DEVS0 Auto/1 Full. Thermal0x00110019: Standard0/Whisper1/Performance2.
-Performance regulates RPM automatically; Full Speed is an override. No custom
-curve, arbitrary RPM target or calibrated manufacturer min/max query.
-Current UI restrictions: Performance on AC+>40% battery; Full Speed on AC.
-Explicit requests that are ineligible report the restriction.
+## Hardware evidence and unresolved issues
 
-Battery0x00120057 accepts80/100; DSTS reports support, not numerical limit.
-24h timer is userspace and resumes next running login if deadline passes while
-off/logged out. Fn0x00100023 accepts exact10000/10001; DEVS0 normal/1 hotkeys.
-No Lenovo EC code from YogaSMC; it informed pane/driver separation only.
+User corrected the earlier boot-stall attribution: it was unrelated to AsusSMC.
+RPM and Auto/Full Speed physically worked with earlier custom driver builds.
+Thermal DSTS/DEVS0x00110019: Standard0, Whisper1, Performance2. Fan0x00110013:
+low16*100RPM, DEVS0 Auto/1 Full. Profile firmware regulates speed based on its
+internal thermal policy; exact curves/thresholds are unknown. No arbitrary RPM
+or manufacturer-calibrated min/max. Userspace implements eligibility fallback.
 
-## Existing evidence and next test
+Battery DEVS0x00120057 accepts80/100. DSTS is capability, not numerical readback.
+ChargeLimitRequested is an acknowledgement cache. Saved DSDT SRSC calls WEBC:
+WEBC returns1 after queueing EC bytes, without checking eventual charge-limit
+enforcement. User confirms charging continued past80%. Context refresh is fixed,
+but actual enforcement remains unverified. Do not claim it physically fixed or
+guess undocumented0x80 encodings/registers. Test with charger connected over80%.
 
-The user corrected the prior boot-stall attribution: it was unrelated to
-AsusSMC. Do not call it a kext-caused regression. Running driver during1.1.2
-work was1.1.0, with live RPM/thermal cache and working physical Auto/Full Speed.
-Fn changes eventually reached confirmed readback. Earlier approved recovery
-restored SYSTEM from stock OPENCORE1.4.1 while the cause was uncertain;
-that is history, not the current driver state. Preserve ignored recovery files.
+Fn0x00100023 accepts exactDSTS10000/10001. DEVS0 normal/1 hotkeys returns1 even
+when its nested EC mailbox operation does not establish physical success. User
+reports intermittent behavior. Added diagnostics FnLockRaw, RequestedHotkeys and
+WriteAcknowledged do not fix this protocol. Session command from this sandbox
+was denied0xe00002e2, before any write; do not bypass that restriction. Physical
+Fn behavior still needs investigation/testing through the normal user session.
 
-Next: close System Settings and replace the pane, then test direct Fn/profile
-changes. To test wake-on-request, deliberately replace the existing kext with
-matching1.1.2 using the recoverable test EFI. No duplicated AsusSMC entry or
-boot-argument/SSDT change is required. Do not install it automatically.
-Physical latency, profile acoustics, remaining controls and sleep/wake still
-need user validation. Source publication/builds never authorize live EFI edits.
+Tests use pure policy/fake driver and offscreen windows, never live writes.
+Compilation/fixtures do not prove boot, charging, fan acoustics, sleep/wake or
+physical input behavior. Keep source publication separate from live deployment.

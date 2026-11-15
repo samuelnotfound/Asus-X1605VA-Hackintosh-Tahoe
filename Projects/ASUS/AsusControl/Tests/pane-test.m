@@ -34,15 +34,21 @@ int main(int argc,const char **argv) {
     // Offscreen only. Never call lifecycle/setting actions or start an agent.
     NSWindow *window=[[NSWindow alloc]initWithContentRect:NSMakeRect(0,0,660,1000) styleMask:NSWindowStyleMaskBorderless backing:NSBackingStoreBuffered defer:NO];
     NSView *container=[[NSView alloc]initWithFrame:window.contentView.bounds];window.contentView=container;
+    container.wantsLayer=YES;
     [container addSubview:view];settle(view);assert(fabs(view.bounds.size.height-1000)<2);
     for(NSString *theme in @[@"Light",@"Dark"]) {
         window.appearance=[NSAppearance appearanceNamed:[theme isEqual:@"Dark"]?NSAppearanceNameDarkAqua:NSAppearanceNameAqua];NSApp.appearance=window.appearance;
+        container.layer.backgroundColor=([theme isEqual:@"Dark"] ? [NSColor colorWithCalibratedRed:0.13 green:0.16 blue:0.14 alpha:1] : [NSColor colorWithCalibratedRed:0.94 green:0.96 blue:0.95 alpha:1]).CGColor;
         for(NSNumber *width in @[@480,@660,@900]) {
             [window setContentSize:NSMakeSize(width.doubleValue,1000)];settle(view);
             assert(fabs(view.bounds.size.width-width.doubleValue)<2 && scrollViews(view)==1);
-            snapshot(view,[[NSString stringWithUTF8String:argv[2]]stringByAppendingPathComponent:[NSString stringWithFormat:@"Pane-%@-%@.png",width,theme]]);
+            snapshot(container,[[NSString stringWithUTF8String:argv[2]]stringByAppendingPathComponent:[NSString stringWithFormat:@"Pane-%@-%@.png",width,theme]]);
         }
     }
+    [pane setValue:@{@"ACPower":@NO,@"PowerSourceKnown":@YES,@"BatteryKnown":@YES,@"BatteryPercent":@75} forKey:@"system"];
+    [pane performSelector:@selector(displayStatus)];
+    [window setContentSize:NSMakeSize(660,1000)];
+    snapshot(container,[[NSString stringWithUTF8String:argv[2]]stringByAppendingPathComponent:@"Pane-Battery-Dark.png"]);
     puts("PASS: single native scrolling pane, no tabs, host resizing and light/dark card layout. No firmware writes.");
  }
 }

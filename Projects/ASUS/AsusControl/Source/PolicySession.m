@@ -21,21 +21,18 @@ int AsusAcquirePolicyLock(unsigned waitMilliseconds, NSError **error) {
     return -1;
 }
 void AsusReleasePolicyLock(int descriptor) { if(descriptor>=0) {flock(descriptor,LOCK_UN);close(descriptor);} }
-BOOL AsusApplyPolicyFamily(NSDictionary *p,NSString *family,AsusDeviceEnvironment *environment,NSMutableDictionary *state,NSError **error) {
+static BOOL applyOne(NSDictionary *p,NSString *family,BOOL foreground,NSDictionary *system,NSMutableDictionary *state,NSError **error) {
     NSDictionary *hardware=AsusControlReadStatus();
     if(![hardware[@"DeviceControlAllowed"] boolValue]) {
         if(error)*error=[NSError errorWithDomain:@"com.samuelnotfound.AsusControl.Policy" code:4 userInfo:@{NSLocalizedDescriptionKey:@"The driver has not enabled device controls."}];
         return NO;
     }
-    NSMutableDictionary *system=[[environment sample] mutableCopy];
-    for(NSString *key in @[@"PerformanceOnBattery",@"PerformanceMinimumBattery",@"FullSpeedOnBattery"])
-        if(hardware[key]) system[key]=hardware[key];
     BOOL fan=([family isEqual:@"all"] || [family isEqual:@"ThermalIntent"]) && [p[@"FanManaged"] boolValue];
     NSString *unavailable=nil;
     if(fan && (![hardware[@"ThermalProfileValid"] boolValue] || ![system[@"PowerSourceKnown"] boolValue])) unavailable=@"The current fan profile or power source is unavailable.";
     if(([family isEqual:@"all"] || [family isEqual:@"FnIntent"]) && [p[@"FnManaged"] boolValue] && ![hardware[@"FnLockAvailable"] boolValue]) unavailable=@"Function-key mode is unavailable with the current firmware.";
     if(([family isEqual:@"all"] || [family isEqual:@"ChargeIntent"]) && [p[@"BatteryManaged"] boolValue] && ![hardware[@"BatteryCareAvailable"] boolValue]) unavailable=@"Charging control is unavailable with the current firmware.";
-    if(fan && [family isEqual:@"ThermalIntent"] && AsusEffectiveProfile(p,system)!=[p[@"ManualProfile"] integerValue])
+    if(fan && foreground && [family isEqual:@"ThermalIntent"] && AsusEffectiveProfile(p,system)!=[p[@"ManualProfile"] integerValue])
         unavailable=@"This profile is unavailable on the power source macOS currently reports. Connect the power adapter; Performance also requires more than 40% battery.";
     if(unavailable) { if(error)*error=[NSError errorWithDomain:@"com.samuelnotfound.AsusControl.Policy" code:4 userInfo:@{NSLocalizedDescriptionKey:unavailable}];return NO; }
     NSArray *all=AsusPolicyActions(p,hardware,system,state,NSDate.date.timeIntervalSince1970);
@@ -49,4 +46,43 @@ BOOL AsusApplyPolicyFamily(NSDictionary *p,NSString *family,AsusDeviceEnvironmen
     },^NSDictionary *(NSError **failure) {
         return AsusControlRefreshSettings(failure) ? AsusControlReadStatus() : nil;
     },error);
+}
+
+BOOL AsusApplyPolicyFamily(NSDictionary *p,NSString *family,AsusDeviceEnvironment *environment,NSMutableDictionary *state,NSError **error) {
+    if(error)*error=nil;
+    NSMutableDictionary *failures=[state[@"FailedFamilies"] mutableCopy] ?: [NSMutableDictionary dictionary];
+    BOOL all=[family isEqual:@"all"], requestedSucceeded=YES;
+    NSDictionary *hardware=AsusControlReadStatus();
+    NSMutableDictionary *system=[[environment sample] mutableCopy];
+    for(NSString *key in @[@"PerformanceOnBattery",@"PerformanceMinimumBattery",@"FullSpeedOnBattery"])
+        if(hardware[key]) system[key]=hardware[key];
+    NSDictionary *contexts=@{
+        @"ThermalIntent":[NSString stringWithFormat:@"driver:%@:power:%@:effective:%ld",
+            hardware[@"DriverSessionID"] ?: hardware[@"DriverRegistryEntryID"] ?: @"unknown", system[@"PowerSourceKnown"] ? system[@"ACPower"] : @"unknown",
+            (long)AsusEffectiveProfile(p,system)],
+        @"ChargeIntent":AsusChargePolicyContext(p,hardware,system,NSDate.date.timeIntervalSince1970)};
+    NSMutableDictionary *failedContexts=[state[@"FailedFamilyContexts"] mutableCopy] ?: [NSMutableDictionary dictionary];
+    NSArray *families=all ? @[@"ChargeIntent",@"ThermalIntent",@"FnIntent",@"keyboard"] : @[family];
+    for(NSString *item in families) {
+        // A new effective target, driver session or power source gets one fresh
+        // attempt. An unchanged failed request is not written every agent tick.
+        if(all && failures[item] && contexts[item] && ![failedContexts[item] isEqual:contexts[item]])
+            [failures removeObjectForKey:item];
+        if(all && failures[item]) continue;
+        NSError *failure=nil;
+        if(applyOne(p,item,!all,system,state,&failure)) {
+            [failures removeObjectForKey:item]; [failedContexts removeObjectForKey:item];
+        }
+        else {
+            requestedSucceeded=NO;
+            failures[item]=failure.localizedDescription ?: @"The setting could not be confirmed.";
+            if(contexts[item]) failedContexts[item]=contexts[item];
+            if(error)*error=failure;
+        }
+    }
+    state[@"FailedFamilies"]=failures;
+    state[@"FailedFamilyContexts"]=failedContexts;
+    if(all && failures.count && error && !*error)
+        *error=[NSError errorWithDomain:@"com.samuelnotfound.AsusControl.Policy" code:9 userInfo:@{NSLocalizedDescriptionKey:failures.allValues.firstObject}];
+    return requestedSucceeded && (!all || failures.count==0);
 }

@@ -14,6 +14,7 @@ private final class SettingsModel: ObservableObject {
     func flag(_ values: [String: Any], _ key: String) -> Bool { (values[key] as? NSNumber)?.boolValue ?? false }
     func number(_ values: [String: Any], _ key: String) -> Int { (values[key] as? NSNumber)?.intValue ?? 0 }
     var devices: Bool { !busy && flag(hardware, "DeviceControlAllowed") }
+    var fullSpeedAvailable: Bool { devices && flag(system,"PowerSourceKnown") && flag(system,"ACPower") }
     func bool(_ key: String) -> Binding<Bool> {
         Binding(get: { self.flag(self.preferences,key) }, set: { self.actions?.changeSetting(key,value:NSNumber(value:$0)) })
     }
@@ -46,12 +47,6 @@ private struct SettingsScreen: View {
     private var preferences: [String:Any] { model.preferences }
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Text("ASUS Control").font(.headline)
-                Spacer()
-                Text(model.version.replacingOccurrences(of:"ASUS Control ",with:""))
-                    .font(.caption2).foregroundStyle(.tertiary)
-            }.padding(.horizontal,20).padding(.top,16).padding(.bottom,12)
             Form {
                 if !model.message.isEmpty && model.message != "Settings applied." {
                     Section {
@@ -67,23 +62,30 @@ private struct SettingsScreen: View {
                 }
                 power
                 input
-            }.formStyle(.grouped)
-        }.frame(maxWidth:.infinity,maxHeight:.infinity).background(Color(nsColor:.windowBackgroundColor))
+                Section {
+                    Text(model.version).font(.caption2).foregroundStyle(.tertiary)
+                }.listRowBackground(Color.clear)
+            }.formStyle(.grouped).scrollContentBackground(.hidden)
+        }.frame(maxWidth:.infinity,maxHeight:.infinity)
     }
     private var power: some View {
         Group {
             Section {
                 HStack(spacing:12) {
-                    profileCard(2,title:"Performance",symbol:"speedometer",detail:"Prioritize cooling for demanding tasks.")
-                    profileCard(0,title:"Standard",symbol:"fan",detail:"Balance performance and fan noise.")
-                    profileCard(1,title:"Whisper",symbol:"leaf",detail:"Keep fan noise lower for lighter tasks.")
+                    profileCard(2,title:"Dynamic Performance mode",symbol:"speedometer",detail:"Dynamically maximizes cooling performance for demanding tasks.")
+                    profileCard(0,title:"Standard mode",symbol:"fan",detail:"Dynamically selects the best fan speed for everyday tasks.")
+                    profileCard(1,title:"Whisper mode",symbol:"leaf",detail:"Dynamically minimizes fan speed for the quietest operation.")
                 }.listRowInsets(EdgeInsets(top:0,leading:0,bottom:0,trailing:0)).listRowBackground(Color.clear)
-            } header: { Text("Fan Profile") }
+            } header: { Text("Fan Profile") } footer: {
+                Text("Dynamic Performance requires AC power and more than 40% battery. Standard is used when these conditions are not met; your Performance selection resumes when they are met again.")
+                    .fixedSize(horizontal:false,vertical:true)
+            }
             Section {
                 Toggle("Full Speed",isOn:Binding(get:{ model.number(hardware,"FanRequestedMode") == 1 },set:{ enabled in
                     let profile = enabled ? 3 : model.number(hardware,"ThermalProfile")
                     model.actions?.changeSetting("QuickProfile",value:NSNumber(value:profile))
-                })).disabled(!model.devices || !model.profileAllowed(3))
+                })).disabled(!model.fullSpeedAvailable).opacity(model.fullSpeedAvailable ? 1 : 0.4)
+                LabeledContent("Active profile",value:model.currentProfile)
                 LabeledContent("Fan speed",value:model.flag(hardware,"FanReadingValid") ? "\(model.number(hardware,"FanRPM")) RPM" : "Unavailable")
             } footer: {
                 Text("Profiles adjust fan speed automatically. Full Speed keeps the fan running at its full-speed setting.").fixedSize(horizontal:false,vertical:true)
@@ -93,7 +95,7 @@ private struct SettingsScreen: View {
                 Toggle("Full charging for 24 hours",isOn:Binding(get:{ fullCharging },set:{ model.actions?.changeSetting("FullCharge",value:NSNumber(value:$0)) }))
                     .disabled(!model.devices || !model.flag(hardware,"BatteryCareAvailable") || !model.flag(preferences,"BatteryCare"))
             } header: { Text("Battery") } footer: {
-                Text(fullCharging ? "Charging to 100% is allowed until \(fullChargeEnd). Battery Care then returns to 80%." : "Battery Care limits charging to 80%. Temporarily allow 100% for 24 hours when you need a full charge.")
+                Text(fullCharging ? "Charging to 100% is allowed until \(fullChargeEnd). Battery Care then returns to 80%." : "Battery Care requests an 80% charging limit. Temporarily allow 100% for 24 hours when you need a full charge.")
                     .fixedSize(horizontal:false,vertical:true)
             }
         }
@@ -107,17 +109,20 @@ private struct SettingsScreen: View {
                 HStack(alignment:.top) {
                     Image(systemName:symbol).font(.system(size:25,weight:.regular))
                     Spacer(minLength:0)
-                    if selected { Image(systemName:"checkmark.circle.fill").font(.system(size:16)) }
+                    if selected { Image(systemName:"checkmark.circle.fill").font(.system(size:16)).accessibilityLabel("Active") }
                 }.foregroundStyle(selected ? Color.accentColor : Color.primary)
                 Text(title).font(.system(size:14,weight:.semibold)).foregroundStyle(.primary)
                 Text(detail).font(.system(size:12)).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)
                 Spacer(minLength:0)
-            }.padding(14).frame(maxWidth:.infinity,minHeight:154,maxHeight:154,alignment:.topLeading)
-                .background(selected ? Color.accentColor.opacity(0.10) : Color(nsColor:.controlBackgroundColor),in:RoundedRectangle(cornerRadius:12))
+                if selected { Text("Active").font(.caption.weight(.semibold)).foregroundStyle(Color.accentColor) }
+            }.padding(14).frame(maxWidth:.infinity,minHeight:202,maxHeight:202,alignment:.topLeading)
+                .background(selected ? Color.accentColor.opacity(0.10) : Color.primary.opacity(0.035),in:RoundedRectangle(cornerRadius:12))
                 .overlay(RoundedRectangle(cornerRadius:12).stroke(selected ? Color.accentColor : Color(nsColor:.separatorColor),lineWidth:selected ? 2 : 1))
                 .contentShape(RoundedRectangle(cornerRadius:12))
+            .environment(\.isEnabled, true)
+            .opacity(!model.profileAllowed(profile) && !selected ? 0.4 : 1)
         }.buttonStyle(.plain).disabled(!model.devices || !model.profileAllowed(profile))
-            .accessibilityLabel("\(title) fan profile").accessibilityValue(selected ? "Selected" : "Not selected")
+            .accessibilityLabel("\(title) fan profile").accessibilityValue(selected ? "Active" : "Not active")
     }
     private var fullCharging: Bool { model.flag(preferences,"BatteryCare") && ((preferences["FullChargeUntil"] as? NSNumber)?.doubleValue ?? 0) > Date().timeIntervalSince1970 }
     private var fullChargeEnd: String { Date(timeIntervalSince1970:(preferences["FullChargeUntil"] as? NSNumber)?.doubleValue ?? 0).formatted(date:.abbreviated,time:.shortened) }
@@ -172,6 +177,7 @@ private struct SettingsScreen: View {
 // Legacy preference-pane hosts can attach a fixed initial frame. Adopt the
 // actual container on attachment and use ordinary AppKit autoresizing after it.
 private final class SettingsHost: NSHostingView<SettingsScreen> {
+    override var isOpaque: Bool { false }
     override func viewDidMoveToSuperview() {
         super.viewDidMoveToSuperview()
         autoresizingMask = [.width,.height]
