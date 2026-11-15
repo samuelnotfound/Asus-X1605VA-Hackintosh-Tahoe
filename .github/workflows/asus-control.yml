@@ -1,0 +1,24 @@
+name: ASUS Control
+on:
+  push:
+    paths:
+      - Projects/ASUS/AsusControl/**
+      - .github/workflows/asus-control.yml
+  pull_request:
+    paths:
+      - Projects/ASUS/AsusControl/**
+      - .github/workflows/asus-control.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build preference pane
+        run: bash Projects/ASUS/AsusControl/build.sh
+      - name: Test pane and client without firmware writes
+        run: bash Projects/ASUS/AsusControl/test.sh
+      - name: Build and test the matching AsusSMC source
+        run: bash Projects/ASUS/AsusControl/build-driver.sh

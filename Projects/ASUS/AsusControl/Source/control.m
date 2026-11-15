@@ -1,31 +1,50 @@
 // Copyright (c) 2026 samuelnotfound. MIT License.
 #import "DeviceClient.h"
+#import "Preferences.h"
+#import "Policy.h"
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 static int usage(void) {
-    fputs("Usage: x1605vactl status | refresh | profile standard|whisper|performance | fan auto|full | keyboard 0..100 | --version\n", stderr);
+    fputs("Usage: asusctl status | refresh | profile standard|whisper|performance | fan auto|full | keyboard 0..100 | device charge-80|charge-100|fn-hotkeys|fn-keys|touchpad-on|touchpad-off|standard|whisper|performance|full-speed|automatic | service remove | --version\n", stderr);
     return 2;
 }
 
 int main(int argc, const char **argv) {
     @autoreleasepool {
-        if (argc == 2 && !strcmp(argv[1], "--version")) { puts(X1605VA_VERSION); return 0; }
+        if (argc == 2 && !strcmp(argv[1], "--version")) { puts(ASUS_CONTROL_VERSION); return 0; }
         if (argc == 2 && !strcmp(argv[1], "refresh")) {
             NSError *error = nil;
-            if (!X1605VARefreshSettings(&error)) {
+            if (!AsusControlRefreshSettings(&error)) {
                 fprintf(stderr, "%s\n", error.localizedDescription.UTF8String); return 1;
             }
-            NSData *json = [NSJSONSerialization dataWithJSONObject:X1605VAReadStatus() options:NSJSONWritingPrettyPrinted error:NULL];
+            NSData *json = [NSJSONSerialization dataWithJSONObject:AsusControlReadStatus() options:NSJSONWritingPrettyPrinted error:NULL];
             fwrite(json.bytes, 1, json.length, stdout); puts(""); return 0;
         }
         if (argc == 2 && !strcmp(argv[1], "status")) {
-            NSData *json = [NSJSONSerialization dataWithJSONObject:X1605VAReadStatus() options:NSJSONWritingPrettyPrinted error:NULL];
+            NSData *json = [NSJSONSerialization dataWithJSONObject:AsusControlReadStatus() options:NSJSONWritingPrettyPrinted error:NULL];
             fwrite(json.bytes, 1, json.length, stdout); puts(""); return 0;
         }
         if (argc != 3) return usage();
+        if (!strcmp(argv[1], "service") && !strcmp(argv[2], "remove")) {
+            NSError *error = nil;
+            if (!AsusWritePreferences(AsusDefaultPreferences(), &error) || !AsusRemoveAgent(&error)) {
+                fprintf(stderr, "%s\n", error.localizedDescription.UTF8String); return 1;
+            }
+            puts("Automatic settings service removed."); return 0;
+        }
+        if (!strcmp(argv[1], "device")) {
+            NSArray *names = @[@"charge-80", @"charge-100", @"fn-hotkeys", @"fn-keys", @"touchpad-on", @"touchpad-off", @"standard", @"whisper", @"performance", @"full-speed", @"automatic"];
+            NSUInteger index = [names indexOfObject:[NSString stringWithUTF8String:argv[2]]];
+            if (index == NSNotFound) return usage();
+            NSError *error = nil;
+            if (!AsusControlSendDeviceCommand((uint32_t)index + 1, &error)) {
+                fprintf(stderr, "%s\n", error.localizedDescription.UTF8String); return 1;
+            }
+            puts("Firmware accepted the request. Read back state to confirm it."); return 0;
+        }
         BOOL keyboard = !strcmp(argv[1], "keyboard");
         BOOL profile = !strcmp(argv[1], "profile");
         uint32_t command = 0;
@@ -47,10 +66,10 @@ int main(int argc, const char **argv) {
         NSError *error = nil;
         // A profile uses firmware's automatic fan policy. Explicitly release a
         // previous full-speed override first, under the same authorization.
-        if (profile && !X1605VASendCommand(NO, 1, &error)) {
+        if (profile && !AsusControlSendCommand(NO, 1, &error)) {
             fprintf(stderr, "%s\n", error.localizedDescription.UTF8String); return 1;
         }
-        if (!X1605VASendCommand(keyboard, command, &error)) {
+        if (!AsusControlSendCommand(keyboard, command, &error)) {
             fprintf(stderr, "%s\n", error.localizedDescription.UTF8String); return 1;
         }
         puts("Firmware accepted the setting.");

@@ -1,0 +1,67 @@
+// Pure decisions, separated from firmware, launchd and the preference pane.
+#import "Policy.h"
+
+NSDictionary *AsusDefaultPreferences(void) {
+    return @{@"BatteryManaged":@NO, @"BatteryCare":@YES, @"FullChargeUntil":@0,
+        @"SplitProfiles":@NO, @"ACProfile":@0, @"BatteryProfile":@0,
+        @"FollowLowPower":@NO, @"FnManaged":@NO, @"FnHotkeys":@YES,
+        @"BacklightSleepMode":@0, @"BacklightTimeout":@60};
+}
+BOOL AsusNeedsAgent(NSDictionary *p) {
+    return [p[@"BatteryManaged"] boolValue] || [p[@"SplitProfiles"] boolValue] ||
+        [p[@"FollowLowPower"] boolValue] || [p[@"FnManaged"] boolValue] ||
+        [p[@"BacklightSleepMode"] integerValue] != 0;
+}
+NSInteger AsusEffectiveProfile(NSDictionary *p, NSDictionary *system) {
+    if ([p[@"FollowLowPower"] boolValue] && [system[@"LowPowerMode"] boolValue]) return 1;
+    BOOL ac = [system[@"ACPower"] boolValue];
+    NSInteger profile = [p[ac ? @"ACProfile" : @"BatteryProfile"] integerValue];
+    if (profile < 0 || profile > 3) return 0;
+    // This is a capability of the current hardware profile, not every ASUS.
+    if (!ac && profile == 2 && ![system[@"PerformanceOnBattery"] boolValue]) return 0;
+    if (!ac && profile == 3 && ![system[@"FullSpeedOnBattery"] boolValue]) return 0;
+    NSInteger minimum = system[@"PerformanceMinimumBattery"] ? [system[@"PerformanceMinimumBattery"] integerValue] : 40;
+    if (profile == 2 && minimum > 0 && (![system[@"BatteryKnown"] boolValue] || [system[@"BatteryPercent"] integerValue] <= minimum)) return 0;
+    return profile;
+}
+NSArray<NSDictionary *> *AsusPolicyActions(NSDictionary *p, NSDictionary *h,
+    NSDictionary *system, NSDictionary *state, NSTimeInterval now) {
+    if (![h[@"DeviceControlAllowed"] boolValue]) return @[];
+    NSMutableArray *actions = [NSMutableArray array];
+    if ([p[@"BatteryManaged"] boolValue] && [h[@"BatteryCareAvailable"] boolValue]) {
+        BOOL care = [p[@"BatteryCare"] boolValue];
+        BOOL temporary = care && [p[@"FullChargeUntil"] doubleValue] > now;
+        NSInteger limit = care && !temporary ? 80 : 100;
+        NSString *intent = [NSString stringWithFormat:@"charge:%ld", (long)limit];
+        if (![state[@"ChargeIntent"] isEqual:intent])
+            [actions addObject:@{@"Kind":@"device", @"Value":@(limit == 80 ? 1 : 2), @"IntentKey":@"ChargeIntent", @"Intent":intent}];
+    }
+    if (([p[@"SplitProfiles"] boolValue] || [p[@"FollowLowPower"] boolValue]) && [h[@"ThermalProfileValid"] boolValue] && [system[@"PowerSourceKnown"] boolValue]) {
+        NSInteger profile = AsusEffectiveProfile(p, system);
+        NSString *intent = [NSString stringWithFormat:@"profile:%d:%d:%ld", [system[@"ACPower"] boolValue], [system[@"LowPowerMode"] boolValue], (long)profile];
+        if (![state[@"ThermalIntent"] isEqual:intent])
+            [actions addObject:@{@"Kind":@"device", @"Value":@(profile == 3 ? 10 : 7 + profile), @"IntentKey":@"ThermalIntent", @"Intent":intent}];
+    }
+    if ([p[@"FnManaged"] boolValue] && [h[@"FnLockAvailable"] boolValue]) {
+        BOOL hotkeys = [p[@"FnHotkeys"] boolValue];
+        NSString *intent = hotkeys ? @"fn:hotkeys" : @"fn:functions";
+        if (![state[@"FnIntent"] isEqual:intent])
+            [actions addObject:@{@"Kind":@"device", @"Value":@(hotkeys ? 3 : 4), @"IntentKey":@"FnIntent", @"Intent":intent}];
+    }
+    NSInteger sleepMode = [p[@"BacklightSleepMode"] integerValue];
+    NSInteger timeout = [p[@"BacklightTimeout"] integerValue];
+    BOOL applicable = sleepMode == 1 || (sleepMode == 2 && [system[@"PowerSourceKnown"] boolValue] && ![system[@"ACPower"] boolValue]);
+    BOOL dimmed = [state[@"Dimmed"] boolValue];
+    if (system[@"IdleSeconds"] && [h[@"KeyboardReadingValid"] boolValue] && [h[@"KeyboardControlAvailable"] boolValue]) {
+        NSInteger level = [h[@"KeyboardPercent"] integerValue];
+        double idle = [system[@"IdleSeconds"] doubleValue];
+        if (dimmed && (!applicable || timeout <= 0 || idle < timeout)) {
+            if (level == 0 && [state[@"RestoreKeyboard"] integerValue] > 0)
+                [actions addObject:@{@"Kind":@"keyboard", @"Value":state[@"RestoreKeyboard"], @"Restore":@YES}];
+            else [actions addObject:@{@"Kind":@"clear-dim"}];
+        } else if (!dimmed && applicable && timeout >= 30 && idle >= timeout && level > 0) {
+            [actions addObject:@{@"Kind":@"keyboard", @"Value":@0, @"SaveKeyboard":@(level)}];
+        }
+    }
+    return actions;
+}

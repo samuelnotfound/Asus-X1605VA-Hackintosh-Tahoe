@@ -30,6 +30,6 @@ if (source/'VERSION').read_text().strip() != config['release']:
 PY
 fi
 test "$(tr -d '\r\n' < "$SOURCE_DIR/VERSION")" = "$(tr -d '\r\n' < VERSION)"
-bash "$SOURCE_DIR/build-x1605va.sh"
-ditto "$SOURCE_DIR/build-x1605va/AsusSMC.kext" "$SETTINGS_DIR/build/AsusSMC.kext"
+bash "$SOURCE_DIR/build-device-settings.sh"
+ditto "$SOURCE_DIR/build-device-settings/AsusSMC.kext" "$SETTINGS_DIR/build/AsusSMC.kext"
 echo "Driver built at $SETTINGS_DIR/build/AsusSMC.kext. Nothing installed."

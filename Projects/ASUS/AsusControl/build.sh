@@ -3,14 +3,16 @@ set -euo pipefail
 cd "$(dirname "$0")"
 SETTINGS_VERSION=$(tr -d '\r\n' < VERSION)
 [[ "$SETTINGS_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Invalid VERSION' >&2; exit 1; }
-PANE="$PWD/build/X1605VA Settings.prefPane"
+PANE="$PWD/build/ASUS Control.prefPane"
 mkdir -p "$PANE/Contents/MacOS" "$PANE/Contents/Helpers" "$PANE/Contents/Resources" build/Settings.iconset
-FLAGS=(-arch x86_64 -arch arm64 -mmacosx-version-min=13.0 -fobjc-arc -O2 -Wall -Wextra -Werror "-DX1605VA_VERSION=\"$SETTINGS_VERSION\"")
-xcrun clang "${FLAGS[@]}" -bundle Source/X1605VASettingsPane.m Source/DeviceClient.m \
-  -framework Cocoa -framework PreferencePanes -framework IOKit \
-  -o "$PANE/Contents/MacOS/X1605VASettings"
-xcrun clang "${FLAGS[@]}" Source/control.m Source/DeviceClient.m \
-  -framework Foundation -framework IOKit -o "$PANE/Contents/Helpers/x1605vactl"
+FLAGS=(-arch x86_64 -arch arm64 -mmacosx-version-min=13.0 -fobjc-arc -O2 -Wall -Wextra -Werror "-DASUS_CONTROL_VERSION=\"$SETTINGS_VERSION\"")
+xcrun clang "${FLAGS[@]}" -bundle Source/AsusControlPane.m Source/DeviceClient.m Source/Policy.m Source/Preferences.m Source/SystemStatus.m \
+  -framework Cocoa -framework PreferencePanes -framework IOKit -framework CoreGraphics \
+  -o "$PANE/Contents/MacOS/AsusControl"
+xcrun clang "${FLAGS[@]}" Source/control.m Source/DeviceClient.m Source/Preferences.m Source/Policy.m \
+  -framework Foundation -framework IOKit -o "$PANE/Contents/Helpers/asusctl"
+xcrun clang "${FLAGS[@]}" Source/agent.m Source/DeviceClient.m Source/Policy.m Source/Preferences.m Source/SystemStatus.m \
+  -framework Foundation -framework IOKit -framework CoreGraphics -o "$PANE/Contents/Helpers/asuscontrol-agent"
 python3 - "$SETTINGS_VERSION" "$PANE" <<'PY'
 import pathlib, plistlib, sys
 version, target = sys.argv[1:]
@@ -35,9 +37,10 @@ for tag, name in [('icp4','16x16'), ('icp5','32x32'), ('icp6','32x32@2x'),
 payload = b''.join(chunks)
 pathlib.Path(sys.argv[1]).write_bytes(b'icns' + struct.pack('>I', len(payload) + 8) + payload)
 PY
-codesign --force --sign - --identifier com.samuelnotfound.X1605VASettings.control "$PANE/Contents/Helpers/x1605vactl"
+codesign --force --sign - --identifier com.samuelnotfound.AsusControl.control "$PANE/Contents/Helpers/asusctl"
+codesign --force --sign - --identifier com.samuelnotfound.AsusControl.Agent "$PANE/Contents/Helpers/asuscontrol-agent"
 codesign --force --sign - "$PANE"
 codesign --verify --deep --strict "$PANE"
 plutil -lint "$PANE/Contents/Info.plist"
-printf 'Built X1605VA Settings %s: %s\n' "$SETTINGS_VERSION" "$PANE"
+printf 'Built ASUS Control %s: %s\n' "$SETTINGS_VERSION" "$PANE"
 echo 'Nothing was installed, launched, or written to the firmware.'

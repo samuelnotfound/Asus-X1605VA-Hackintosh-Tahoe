@@ -48,7 +48,7 @@ OpenCore.
 | Screen brightness | ⚠️ Partial | Works with [xe-brilho](https://github.com/JulioNectar/Hackintosh-XPS13Plus-IrisXe-Tahoe/blob/main/docs/INSTALL.md#after-the-first-accelerated-boot); the native brightness slider does not work. |
 | Sleep and wake | ❌ Broken | — |
 | HDMI | ❌ Broken | Needs upstream fixes. |
-| Fan reading and control | ⚠️ Custom driver | RPM and Auto/Full Speed verified with the earlier fan-only patches. Settings driver 1.0.0 had a boot regression; [1.0.1](Projects/ASUS/X1605VASettings) is an unverified recovery candidate. The bundled EFI is not automatically updated. |
+| Fan reading and control | ⚠️ Custom driver | RPM and Auto/Full Speed verified with the earlier fan-only patches. Settings driver 1.0.0 had a boot regression; [ASUS Control 1.1.0](Projects/ASUS/AsusControl) is an unverified recovery candidate. The bundled EFI is not automatically updated. |
 
 ## OpenCore touchpad driver
 
@@ -60,7 +60,7 @@ built-in touchpad in the OpenCore picker before macOS starts.
 - [Installation and update guide](docs/INSTALL.md)
 - [Graphics patch guide](docs/ASUS-GRAPHICS.md)
 - [AsusX1605VATouchpadDxe](Projects/ASUS/AsusX1605VATouchpadDxe)
-- [X1605VA Settings 1.0.1](Projects/ASUS/X1605VASettings) — separate preference pane for MyASUS-style fan profiles and keyboard backlight; includes the matching AsusSMC source patch and build instructions.
+- [ASUS Control 1.1.0](Projects/ASUS/AsusControl) — separate preference pane for ASUS fan, battery and input settings plus system status; includes the matching AsusSMC source patch and build instructions.
 
 ## Future plans
 

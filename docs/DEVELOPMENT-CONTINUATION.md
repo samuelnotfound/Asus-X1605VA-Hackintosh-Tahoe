@@ -1,134 +1,105 @@
-# X1605VA Tahoe development — 2026-11-14
+# ASUS Control continuation — 2026-11-14
 
-Continue settings development here, in
-`samuelnotfound/Asus-X1605VA-Hackintosh-Tahoe`. It is public. The former private
-Hackintosh repository contains earlier fan work; do not copy its raw diagnostics
-or conversation into this repository.
+Continue in `samuelnotfound/Asus-X1605VA-Hackintosh-Tahoe` (public).
+Active source: `Projects/ASUS/AsusControl`, **ASUS Control 1.1.0**.
+The former `X1605VASettings` project has been renamed, not duplicated.
+Deprecated Assistant and the board-specific touchpad UEFI driver are separate;
+this task did not rename those unrelated projects or the hardware EFI repo.
+Never publish raw diagnostics, private identity values, reference documents,
+chat transcripts, or ignored build/recovery files.
 
-## Current scope and release
+## User intent and implementation
 
-`Projects/ASUS/X1605VASettings` is a separate preference-pane project. Release
-1.0.0 had a boot regression; 1.0.1 is an unverified recovery candidate.
-The requested UI follows MyASUS Device Settings: Power & Performance
-with Performance/Standard/Whisper cards, live fan RPM and Auto/Full Speed; Input
-Device Settings with a keyboard-backlight slider. No microphone, screen
-brightness, trackpad, event tap, Accessibility gate, or login service is added.
-Keep the deprecated Assistant project separate and preserve existing ACPI.
+Preserve the existing MyASUS-style pane design. The supplied document is a
+feature reference only. Remove the keyboard brightness slider; keep physical
+four-step backlight cycling. Adapt pane width with Auto Layout, vertical
+scrolling and compact card stacking. Product/code/build names are now broad:
+ASUS Control, AsusControlPane, asusctl, asuscontrol-agent.
 
-Pane and bundled command utility derive versions from VERSION. The matching
-AsusSMC fork uses 1.0.1 and restores upstream `com.hieplpvip.AsusSMC`, retaining
-the service class and bundle filename. The 1.0.0 identity change has been
-reverted along with added startup work. Control API 1 is independent of
-SemVer. The older installed custom 1.4.2 kext lacks the new status API; the pane
-disables its controls and explains the required update with that driver.
+1.1.0 adds battery care80/100, temporary100 for24h, split AC/battery profiles,
+Low Power Mode→Whisper sync, VoodooI2C touchpad lock, Fn primary mode,
+keyboard-backlight timeout and public-API system dashboard. No microphone or
+screen brightness. No CPU temperature/voltage/frequency fabrication, RAM purge
+or Windows power setting is implied.
 
-## Driver source
+Automatic policies use a per-user LaunchAgent only after a feature is enabled.
+Settings/helper/state live in `~/Library/Application Support/AsusControl`;
+LaunchAgent label `com.samuelnotfound.AsusControl.Agent`. Agent polls at5s,
+uses explicit requests, deduplicates policy intents, and stops retrying rejected
+firmware requests for that configuration. Accepted requests are never retried.
+If a24h deadline expires while logged out/off, restore80 at next agent session.
+CLI `asusctl service remove` clears policies and removes the LaunchAgent.
+Builds/tests never register it. See project README for paths and limitations.
 
-The separate AsusSMC checkout is based on hieplpvip/AsusSMC commit
-`c15d2f297c86b65a3cb866cc2bcece595c136417`, branch `x1605va-1.x`.
-The requested GitHub fork could not be created: the connector has no fork
-operation, local Git has no noninteractive authentication, and the browser
-fork page requires sign-in. The user chose to continue the local build.
-Do not claim `samuelnotfound/AsusSMC` is published until verified.
+## Driver source and names
 
-The complete driver source changes are also provided as
-`Driver/AsusSMC-1.0.1.patch` against the pinned upstream commit. Thus the project
-builds without an existing GitHub fork. `build-driver.sh` applies the patch in
-an isolated build checkout. `Tools/export-driver.sh` regenerates it from the
-separate AsusSMC checkout, including staged new source files.
+Separate local AsusSMC checkout, branch `asus-control-1.x`, based on upstream
+`hieplpvip/AsusSMC` commit `c15d2f297c86b65a3cb866cc2bcece595c136417`.
+The requested GitHub fork could not be created: connector has no fork operation,
+local Git no authentication, browser signed out. User chose local build.
+Do not claim `samuelnotfound/AsusSMC` exists or is published until verified.
+Complete source is exported as `Driver/AsusSMC-1.1.0.patch`; build-driver.sh
+applies it in an isolated checkout, so that fork is not a prerequisite.
 
-The patches include the three working fan changes: fix VirtualSMC registration
-order, poll independently of ALS, use the BIOS 305 WMI RPM path, and queue
-root-only fan writes on the workloop. Added in 1.0.0: thermal-profile readback,
-keyboard-backlight cached readback and queued writes through GKPC/SKPC,
-capability/API properties, protocol tests and a Command Line Tools build script.
-In 1.0.1, neither startup nor the periodic callback performs added settings
-discovery/queries. These happen only after a local-user settings-refresh
-request. The pane requests readback while open; no login agent starts it.
-A read timeout stops further refresh requests until pane reselection.
-No fan/profile/backlight setting is written automatically at startup.
+Keep bundle `AsusSMC.kext`, service AsusSMC and upstream identifier
+`com.hieplpvip.AsusSMC`. New API properties use AsusControl prefix; legacy
+X1605VA aliases remain compatibility-only. API2 adds bounded DeviceCommand
+1..11 with local-console/admin privilege and explicit settings opt-in.
+Original fan commands remain administrator-only. All command families share a
+single atomic workloop queue with separate completion properties.
 
-Fan properties preserve the older fanctl request/completion interface. Keyboard
-requests have separate property names, use the same single queue, and require
-local console-user or administrator privilege. Arbitrary methods/EC offsets
-cannot be submitted. Explicit readback uses SettingsCommand=1 and
-SettingsRequestID on the same queue, with separate completion properties.
-Fan mode remains Auto/Full Speed, not arbitrary RPM.
-Selecting a thermal profile in the pane sends Auto then the profile under one
-administrator authorization. Nothing persists or restores settings on login.
+Generic boot setup: `-asusctrl asusctrlprofile=x1605va305 -asusctrlsettings`.
+Optional `-asusctrlfan` for legacy root fan commands; old fan flags accepted.
+Only hardware profile is **X1605VA BIOS305**; addresses and restrictions live
+in `AsusSMC/Models/X1605VA305.hpp`. Broader naming is not compatibility evidence.
+No new SSDT: keyboard timeout needs existing GKPC/SKPC interface; touchpad uses
+IANE(0x6B) and typed VoodooI2C Boolean state queries.
 
 ## Firmware facts
 
-Target tested: ASUS X1605VA, i5-13500H, BIOS 305.
-CPU fan DSTS 0x00110013 returns presence bit plus RPM/100; multiply low16 by100.
-Reject 0xFFFFFFFE and 0xFFFFFFFF before presence-bit interpretation.
-Vivobook profile endpoint 0x00110019: 0 Standard, 1 Whisper, 2 Performance.
-ROG profile 0x00120075 and custom curve endpoints 0x00110024/25 are unsupported
-on this firmware. No verified arbitrary-RPM target or nominal min/max query.
-Observed fan readings include stopped and approximately 5,700–5,800 RPM at full
-speed; these are observations, not calibrated manufacturer bounds.
+Fan DSTS0x00110013: presence + low16×100RPM; reject FFFFFFFE/FFFFFFFF and fpe2
+overflow, stopped0 valid. DEVS0 Auto/1 Full only. Thermal0x00110019:
+Standard0/Whisper1/Performance2. No supported ROG profile/custom curve endpoints
+or calibrated min/max query. Earlier fan-only code physically verified RPM and
+Auto/Full (observed~5700–5800RPM, not manufacturer limits). Profiles were acked,
+not comparatively tested under matched loads.
 
-Keyboard GKPC/SKPC already exist in the percentage-backlight SSDT-KBLU shipped
-in this repository or the combined Assistant SSDT. Do not add Lenovo EC
-addresses from YogaSMC. No additional SSDT is required by this project.
-The original AsusSMC license and notices remain in the fork; settings code has
-its own MIT license. YogaSMC is an architectural reference only.
+Battery0x00120057 DSTS reports support flags, not numeric limit. DEVS80/100
+only; requested limit is an acknowledgement cache. Do not guess the special
+0x80 firmware encoding. Fn0x00100023 accepts exact10000/10001 status;
+DEVS0 normal/1 hotkeys. Profile policy uses AC+>40% battery for Performance
+and AC for Full. Dashboard uses public macOS data; uptime replaces Windows
+startup timing. YogaSMC informed pane/driver separation only; no Lenovo EC code.
 
-## Boot regression and recovery
+## Boot regression and recovery (preserve)
 
-The user confirmed 1.0.0 freezes in verbose boot before login. The attachment
-is a WindowServer WATCHDOG stackshot at 15:21 after about 1,800 seconds uptime,
-preceding the new driver build. It does not identify this boot failure or prove
-a particular fault. Do not label it an AsusSMC kernel panic or infer a graphics
-cause without matching symbols/evidence.
+1.0.0 froze in verbose boot before login. Its attachment is an older
+WindowServer watchdog report at15:21 after~1800s uptime, predating that build;
+it neither identifies the fault nor proves a graphics/AsusSMC panic.
+1.0.1 removed added keyboard discovery and settings queries from startup and
+periodic polling, restoring the original identifier. 1.1.0 retains that boundary
+and suppresses upstream's automatic80% battery write for the selected profile.
+New settings run only on explicit queued userspace requests after login.
+No physical boot fix is established by structural tests.
 
-Read-only inspection found the running AsusSMC is upstream 1.4.1. Mounted
-OPENCORE has that original kext and no X1605VA fan flags. SYSTEM contains the
-failing com.samuelnotfound.AsusSMC 1.0.0 and both fan flags. Its signature passes
-verification and its binary is an x86_64 kext bundle. The initial inspection did not modify a volume. Preserve OPENCORE as the
-working boot option.
+Previous approved recovery restored SYSTEM's AsusSMC.kext byte-for-byte from
+working OPENCORE stock1.4.1. Both configs and OPENCORE were unchanged. Backups
+are ignored under `AsusControl/build/Recovery/Boot-recovery-20261114`.
+Running driver is stock1.4.1, so hardware controls in the candidate pane are
+expected to be unavailable. Do not automatically install the candidate.
+No live EFI or loaded driver was changed during1.1.0 development.
 
-1.0.1 removes keyboard-method discovery from start(), removes added settings
-reads from the periodic callback, and restores the original identifier.
-This isolates added startup work; it is not a proven root cause or confirmed
-boot fix. A structural test guards this boundary. Prior fan-only 1.4.2 source
-was also rebuilt under ignored build/Recovery as a local fallback. That rebuilt
-binary has not itself been boot-tested. The existing recovery EFI remains the
-established boot option.
+## Validation / next hardware step
 
-## Validation and next test
+Local build checks pane/utility/agent universal binaries and matching Intel
+kext, signatures, versions, protocol sentinels/bounds, startup contract,
+policy deadlines/transitions/idle restore, capability gating and offscreen
+640/480/900px layouts in light/dark. Tests use fixtures and never write hardware
+or start a service. GitHub Actions repeats source builds; no prebuilt app/DMG
+installation flow is added.
 
-Local builds and tests cover the kext, unsigned/signed IDs, decoder error
-sentinels and encoding bounds, pane loading, old-driver gating, profile
-selection, keyboard readback, versions and signatures. UI tests use status
-fixtures and offscreen views; they do not make firmware writes.
-The preceding driver verified live fan RPM and physical Auto/Full Speed on the
-laptop. Thermal-profile commands received firmware acknowledgements; profile
-acoustics under matched workloads are not established.
-
-The 1.0.1 candidate needs a deliberate test boot, first with the pane closed.
-Only after boot is established should post-login settings reads be tested: verify API1,
-profile readback, keyboard percentage changes and physical key updates, then
-the preference pane in Tahoe System Settings. Offscreen loading does not prove
-System Settings hosting or hardware control. Sleep remains unresolved; do not
-claim this release fixes it. No candidate kext was loaded.
-
-Build instructions are in the project README. GitHub Actions builds the pane
-and matching patched driver, but no prebuilt app/DMG download flow is added.
-
-## Approved recovery performed
-
-After the 1.0.1 candidate passed local and GitHub Actions checks, the user
-approved write access limited to SYSTEM's EFI/OC/Kexts directory. SYSTEM's
-AsusSMC.kext was restored to the existing upstream 1.4.1 copy from OPENCORE.
-A full file comparison confirmed the restored bundle matches that source.
-OPENCORE and both config.plist files were verified unchanged. The failed
-1.0.0 bundle and working 1.4.1 copy are backed up under the ignored
-build/Recovery/Boot-recovery-20261114 directory. Original 1.4.1 is unsigned;
-its exact bytes were preserved rather than re-signing it.
-
-The restored SYSTEM boot still needs user confirmation. Stock 1.4.1 does not
-include the custom fan/settings features. Candidate 1.0.1 remains uninstalled;
-do not automatically replace the restored driver with it. Code validation
-passed in Actions run 43673556607, source commit
-0013be873d70da437f8515a91dd9f41d5bf054d2. That is build/test evidence only.
+Next: arrange a deliberate recoverable test boot with matching driver and pane
+closed. Establish boot before explicitly querying settings, then test each
+capability independently before opting into background policies. Physical
+battery/Fn/touchpad/timeout behavior, System Settings hosting and sleep/wake
+remain unverified. Do not present build success as hardware validation.
