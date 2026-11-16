@@ -17,7 +17,6 @@ private final class SettingsModel: ObservableObject {
     func flag(_ values: [String: Any], _ key: String) -> Bool { (values[key] as? NSNumber)?.boolValue ?? false }
     func number(_ values: [String: Any], _ key: String) -> Int { (values[key] as? NSNumber)?.intValue ?? 0 }
     var devices: Bool { !busy && flag(hardware, "DeviceControlAllowed") }
-    var fullSpeedAvailable: Bool { devices && flag(system,"PowerSourceKnown") && flag(system,"ACPower") }
     func bool(_ key: String) -> Binding<Bool> {
         Binding(get: { self.flag(self.preferences,key) }, set: { self.actions?.changeSetting(key,value:NSNumber(value:$0)) })
     }
@@ -30,7 +29,7 @@ private final class SettingsModel: ObservableObject {
     }
     func profileAllowed(_ profile: Int, onAC: Bool? = nil) -> Bool {
         let ac = onAC ?? flag(system,"ACPower")
-        if profile == 3 { return ac || flag(hardware,"FullSpeedOnBattery") }
+        if profile == 3 { return flag(system,"PowerSourceKnown") && ac }
         if profile != 2 { return true }
         if !ac && !flag(hardware,"PerformanceOnBattery") { return false }
         // Configuring an AC policy is allowed on battery; it will apply only
@@ -105,21 +104,21 @@ private struct SettingsScreen: View {
     private var power: some View {
         Group {
             Section {
-                HStack(spacing:12) {
-                    profileCard(2,title:"Performance",symbol:"speedometer",detail:"Dynamically maximizes cooling performance for demanding tasks.")
-                    profileCard(0,title:"Standard",symbol:"fan",detail:"Dynamically selects the best fan speed for everyday tasks.")
-                    profileCard(1,title:"Whisper",symbol:"leaf",detail:"Dynamically minimizes fan speed for the quietest operation.")
+                VStack(spacing:12) {
+                    HStack(spacing:12) {
+                        profileCard(2,title:"Performance",symbol:"speedometer",detail:"Dynamically maximizes cooling performance for demanding tasks.")
+                        profileCard(0,title:"Standard",symbol:"fan",detail:"Dynamically selects the best fan speed for everyday tasks.")
+                    }
+                    HStack(spacing:12) {
+                        profileCard(1,title:"Whisper",symbol:"leaf",detail:"Dynamically minimizes fan speed for the quietest operation.")
+                        profileCard(3,title:"Full Speed",symbol:"fan.fill",detail:"Runs the fan at full speed. Requires AC power.")
+                    }
                 }.listRowInsets(EdgeInsets(top:0,leading:0,bottom:0,trailing:0)).listRowBackground(Color.clear)
             } header: { Text("Fan Profile") } footer: {
                 Text("Performance mode requires: AC power and more than 40% battery.")
                     .fixedSize(horizontal:false,vertical:true)
             }
             Section {
-                loadingRow("FullSpeed") {
-                    Toggle("Full Speed",isOn:Binding(get:{ model.number(hardware,"FanRequestedMode") == 1 },set:{ enabled in
-                        model.actions?.changeSetting("FullSpeed",value:NSNumber(value:enabled))
-                    })).disabled(!model.fullSpeedAvailable).opacity(model.fullSpeedAvailable ? 1 : 0.4)
-                }
                 LabeledContent("Active profile",value:model.currentProfile)
                 LabeledContent("Fan speed",value:model.flag(hardware,"FanReadingValid") ? "\(model.number(hardware,"FanRPM")) RPM" : "Unavailable")
             } footer: {
@@ -129,7 +128,8 @@ private struct SettingsScreen: View {
         }
     }
     private func profileCard(_ profile:Int,title:String,symbol:String,detail:String) -> some View {
-        let selected=model.flag(hardware,"ThermalProfileValid") && model.number(hardware,"ThermalProfile") == profile && model.number(hardware,"FanRequestedMode") != 1
+        let fullSpeed = model.number(hardware,"FanRequestedMode") == 1
+        let selected = profile == 3 ? fullSpeed : model.flag(hardware,"ThermalProfileValid") && model.number(hardware,"ThermalProfile") == profile && !fullSpeed
         return Button {
             model.actions?.changeSetting("QuickProfile",value:NSNumber(value:profile))
         } label: {
@@ -143,7 +143,7 @@ private struct SettingsScreen: View {
                 Text(detail).font(.system(size:12)).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)
                 Spacer(minLength:0)
                 if selected { Text("Active").font(.caption.weight(.semibold)).foregroundStyle(Color.accentColor) }
-            }.padding(14).frame(maxWidth:.infinity,minHeight:202,maxHeight:202,alignment:.topLeading)
+            }.padding(14).frame(maxWidth:.infinity,minHeight:176,maxHeight:176,alignment:.topLeading)
                 .background(selected ? Color.accentColor.opacity(0.10) : Color.primary.opacity(0.035),in:RoundedRectangle(cornerRadius:12))
                 .overlay(RoundedRectangle(cornerRadius:12).stroke(selected ? Color.accentColor : Color(nsColor:.separatorColor),lineWidth:selected ? 2 : 1))
                 .contentShape(RoundedRectangle(cornerRadius:12))

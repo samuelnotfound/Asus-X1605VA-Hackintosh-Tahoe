@@ -1,18 +1,19 @@
 # ASUS Control continuation — 2026-11-15
 
 Public repository `samuelnotfound/Asus-X1605VA-Hackintosh-Tahoe`.
-Project `Projects/ASUS/AsusControl`, pane/CLI/agent version in VERSION (now1.2.0). Keep software names
+Project `Projects/ASUS/AsusControl`, pane/CLI/agent version in VERSION (now1.2.1). Keep software names
 broad. Only X1605VA BIOS305 wiring is currently profiled. Do not publish private
 diagnostics, identities, raw ACPI tables, ignored backups or transcripts.
 
 ## Current user decisions
 
 - One transparent native SwiftUI grouped scrolling form; no tabs/dashboard.
-- Keep three large fan-profile cards and use the user's Windows description
+- Use four large cards in a 2×2 grid (Performance/Standard, Whisper/Full Speed);
+  Full Speed replaces the separate switch. Keep the fan-profile cards and use the user's Windows description
   text: Dynamic Performance maximizes cooling for demanding tasks, Standard
   dynamically selects fan speed for everyday tasks, Whisper minimizes noise.
 - Remove duplicate inner ASUS Control heading and Current function-key mode row.
-- Full Speed separate switch, disabled/gray without AC. Active profile remains
+- Full Speed card disabled/gray without AC. Active profile remains
   explicit/legible independently of whether a profile is available to select.
 - No profile-switching UI, custom AC/battery rules or Low Power Mode override.
 - Latest correction supersedes earlier restore/auto rules: remove the
@@ -241,3 +242,13 @@ repository LICENSE is an evaluation agreement, not blanket reuse permission.
 Charging support is retired. Any later source reuse needs
 license-specific review and required notices. The feature idea is a reference,
 not permission to copy its expression.
+
+## 1.2.1 fan card grid
+
+User requested a 2×2 layout with Full Speed alongside the three profiles.
+Performance/Standard form the first row; Whisper/Full Speed the second. All
+use the same active styling and lower-right loading indicator. Full Speed
+requires known AC power, and choosing any normal profile returns to automatic
+firmware regulation. Existing QuickProfile=3 executes Full Speed; no new
+firmware commands, policy changes or driver update. Removed the separate
+Full Speed switch. Offscreen resizing/loading fixtures cover the new grid.

@@ -11,7 +11,8 @@ Read `docs/DEVELOPMENT-CONTINUATION.md` before changing this repository.
 - Use native SwiftUI Form with grouped rows, leading labels and trailing
   controls, following the macOS Appearance/Desktop & Dock references. Avoid
   duplicate fan controls; fit the host size and use one scrolling form. Restore
-  three large Performance/Standard/Whisper cards. One pane, no tabs, dashboard,
+  a 2×2 card grid: Performance/Standard, then Whisper/Full Speed.
+  Full Speed replaces its separate switch; disable it without AC. One pane, no tabs, dashboard,
   profile-switching menu, per-source profile pickers or Low Power Mode rules. The
   former AutoPerformanceOnAC switch is removed and its saved flag ignored.
   Performance requires AC and>40%; return to Standard on restart, AC loss or
@@ -33,7 +34,7 @@ Read `docs/DEVELOPMENT-CONTINUATION.md` before changing this repository.
   No Applying settings banner. Clear indicators after completion/failure; retain
   actual errors. Preserve native grouping and the existing card design.
 - No duplicate content title or current-Fn-mode row. Keep one Fn selector.
-  Card titles are exactly Performance, Standard, Whisper; preserve descriptions.
+  Card titles are exactly Performance, Standard, Whisper, Full Speed; preserve descriptions.
 - Deliberate Fn selections send once despite a matching firmware mirror.
   For reliable interfaces, poll with a bounded delay and adopt late confirmation.
   The known BIOS305 Fn mirror is unreliable: record FnAcceptedIntent and result

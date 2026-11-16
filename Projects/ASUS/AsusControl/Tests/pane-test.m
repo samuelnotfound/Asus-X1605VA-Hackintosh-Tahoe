@@ -52,14 +52,14 @@ int main(int argc,const char **argv) {
     }
     // Neutral product screenshot, separate from tinted-host regression fixtures.
     container.layer.backgroundColor=[NSColor colorWithCalibratedWhite:0.12 alpha:1].CGColor;
-    [window setContentSize:NSMakeSize(660,1000)];
+    [window setContentSize:NSMakeSize(660,1200)];
     snapshot(container,[[NSString stringWithUTF8String:argv[2]]stringByAppendingPathComponent:@"ASUS-Control.png"]);
     [pane setValue:@{@"ACPower":@NO,@"PowerSourceKnown":@YES,@"BatteryKnown":@YES,@"BatteryPercent":@75} forKey:@"system"];
     [pane performSelector:@selector(displayStatus)];
     [window setContentSize:NSMakeSize(660,1000)];
     snapshot(container,[[NSString stringWithUTF8String:argv[2]]stringByAppendingPathComponent:@"Pane-Battery-Dark.png"]);
     [window setContentSize:NSMakeSize(660,1600)];
-    for(NSString *control in @[@"QuickProfile",@"FullSpeed",@"Touchpad",@"FnHotkeys",@"BacklightTimeout",@"all"]) {
+    for(NSString *control in @[@"QuickProfile",@"Touchpad",@"FnHotkeys",@"BacklightTimeout",@"all"]) {
         [pane setValue:@YES forKey:@"busy"];
         [pane setValue:control forKey:@"pendingControl"];
         [pane setValue:@1 forKey:@"pendingValue"];
@@ -69,12 +69,31 @@ int main(int argc,const char **argv) {
         assert(indicator.isIndeterminate && indicator.style==NSProgressIndicatorStyleSpinning);
         assert(fabs(indicator.bounds.size.width-16)<1 && fabs(indicator.bounds.size.height-16)<1);
         NSRect rect=[indicator convertRect:indicator.bounds toView:view];
-        assert(NSMidX(rect)>view.bounds.size.width*0.8); // Trailing side of every control/card.
+        if(![control isEqual:@"QuickProfile"]) assert(NSMidX(rect)>view.bounds.size.width*0.8); // Rows remain trailing; cards use their own column.
 
         snapshot(container,[[NSString stringWithUTF8String:argv[2]]stringByAppendingPathComponent:[NSString stringWithFormat:@"Pane-Loading-%@.png",control]]);
         [pane setValue:@NO forKey:@"busy"];
         [pane performSelector:@selector(displayStatus)];settle(view);assert(spinners(view).count==0);
     }
-    puts("PASS: single native scrolling pane, no tabs, host resizing, light/dark layout and matching 16pt native spinners with completion cleanup. No firmware writes.");
+    // Each card owns one matching lower-right spinner, positioned in a 2×2 grid.
+    [pane setValue:@{@"ACPower":@YES,@"PowerSourceKnown":@YES,@"BatteryKnown":@YES,@"BatteryPercent":@75} forKey:@"system"];
+    NSPoint positions[4];unsigned i=0;
+    for(NSNumber *profile in @[@2,@0,@1,@3]) {
+        [pane setValue:@YES forKey:@"busy"];[pane setValue:@"QuickProfile" forKey:@"pendingControl"];
+        [pane setValue:profile forKey:@"pendingValue"];[pane performSelector:@selector(displayStatus)];settle(view);
+        NSArray *indicators=spinners(view);assert(indicators.count==1);
+        NSProgressIndicator *indicator=indicators.firstObject;
+        NSRect rect=[indicator convertRect:indicator.bounds toView:view];positions[i++]=NSMakePoint(NSMidX(rect),NSMidY(rect));
+    }
+    assert(fabs(positions[0].x-positions[2].x)<2 && fabs(positions[1].x-positions[3].x)<2);
+    assert(positions[1].x-positions[0].x>200);
+    assert(fabs(positions[0].y-positions[1].y)<2 && fabs(positions[2].y-positions[3].y)<2);
+    assert(fabs(positions[0].y-positions[2].y)>150);
+    [pane setValue:@NO forKey:@"busy"];
+    NSMutableDictionary *full=[[pane valueForKey:@"hardware"]mutableCopy];full[@"FanRequestedMode"]=@1;
+    [pane setValue:full forKey:@"hardware"];[pane performSelector:@selector(displayStatus)];
+    [window setContentSize:NSMakeSize(660,1200)];
+    snapshot(container,[[NSString stringWithUTF8String:argv[2]]stringByAppendingPathComponent:@"Pane-Full-Speed.png"]);
+    puts("PASS: 2×2 fan cards including Full Speed, single native scrolling pane, no tabs, host resizing, light/dark layout and matching 16pt native spinners with completion cleanup. No firmware writes.");
  }
 }
