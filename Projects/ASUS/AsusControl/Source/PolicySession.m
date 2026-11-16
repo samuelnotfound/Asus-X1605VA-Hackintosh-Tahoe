@@ -32,13 +32,16 @@ static BOOL applyOne(NSDictionary *p,NSString *family,BOOL foreground,NSDictiona
     if(fan && (![hardware[@"ThermalProfileValid"] boolValue] || ![system[@"PowerSourceKnown"] boolValue])) unavailable=@"The current fan profile or power source is unavailable.";
     if(([family isEqual:@"all"] || [family isEqual:@"FnIntent"]) && [p[@"FnManaged"] boolValue] && ![hardware[@"FnLockAvailable"] boolValue]) unavailable=@"Function-key mode is unavailable with the current firmware.";
     if(([family isEqual:@"all"] || [family isEqual:@"ChargeIntent"]) && [p[@"BatteryManaged"] boolValue] && ![hardware[@"BatteryCareAvailable"] boolValue]) unavailable=@"Charging control is unavailable with the current firmware.";
-    if(fan && foreground && [family isEqual:@"ThermalIntent"] && AsusEffectiveProfile(p,system)!=[p[@"ManualProfile"] integerValue])
+    if(fan && foreground && [family isEqual:@"ThermalIntent"] && ![p[@"AutoPerformanceOnAC"] boolValue] && AsusEffectiveProfile(p,system)!=[p[@"ManualProfile"] integerValue])
         unavailable=@"This profile is unavailable on the power source macOS currently reports. Connect the power adapter; Performance also requires more than 40% battery.";
     if(unavailable) { if(error)*error=[NSError errorWithDomain:@"com.samuelnotfound.AsusControl.Policy" code:4 userInfo:@{NSLocalizedDescriptionKey:unavailable}];return NO; }
     NSMutableDictionary *decisionState=[state mutableCopy];
     // A deliberate Fn selection/retry must reach firmware even if its status
     // mirror already equals the requested value.
-    if(foreground && [family isEqual:@"FnIntent"]) [decisionState removeObjectForKey:@"FnIntent"];
+    if(foreground && [family isEqual:@"FnIntent"]) {
+        [decisionState removeObjectForKey:@"FnIntent"];
+        [decisionState removeObjectForKey:@"FnAcceptedIntent"];
+    }
     NSArray *all=AsusPolicyActions(p,hardware,system,decisionState,NSDate.date.timeIntervalSince1970);
     NSMutableArray *selected=[NSMutableArray array];
     for(NSDictionary *action in all) {
@@ -54,9 +57,10 @@ static BOOL applyOne(NSDictionary *p,NSString *family,BOOL foreground,NSDictiona
 
 BOOL AsusApplyPolicyFamily(NSDictionary *p,NSString *family,AsusDeviceEnvironment *environment,NSMutableDictionary *state,NSError **error) {
     if(error)*error=nil;
+    NSDictionary *hardware=AsusControlReadStatus();
+    AsusRecoverFnReadbackState(p,hardware,state);
     NSMutableDictionary *failures=[state[@"FailedFamilies"] mutableCopy] ?: [NSMutableDictionary dictionary];
     BOOL all=[family isEqual:@"all"], requestedSucceeded=YES;
-    NSDictionary *hardware=AsusControlReadStatus();
     NSMutableDictionary *system=[[environment sample] mutableCopy];
     for(NSString *key in @[@"PerformanceOnBattery",@"PerformanceMinimumBattery",@"FullSpeedOnBattery"])
         if(hardware[key]) system[key]=hardware[key];
@@ -69,7 +73,7 @@ BOOL AsusApplyPolicyFamily(NSDictionary *p,NSString *family,AsusDeviceEnvironmen
     NSMutableDictionary *failedContexts=[state[@"FailedFamilyContexts"] mutableCopy] ?: [NSMutableDictionary dictionary];
     // Read-only recovery: an accepted Fn request can complete after the short
     // foreground observation window. Adopt only its exact target/session.
-    if(all && failures[@"FnIntent"] && [p[@"FnManaged"] boolValue] &&
+    if(all && AsusFnReadbackReliable(hardware) && failures[@"FnIntent"] && [p[@"FnManaged"] boolValue] &&
         [state[@"FnPendingIntent"] isEqual:contexts[@"FnIntent"]] &&
         [hardware[@"FnLockAvailable"] boolValue] && hardware[@"FnLockHotkeys"] &&
         [hardware[@"FnLockHotkeys"] boolValue]==[p[@"FnHotkeys"] boolValue]) {

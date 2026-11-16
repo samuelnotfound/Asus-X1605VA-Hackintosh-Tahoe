@@ -16,6 +16,9 @@ int main(void) {
         assert([AsusControlNormalizeFnStatus(normalized)[@"FnLockHotkeys"]boolValue]); // Never invert twice.
         assert(AsusControlDeviceCommandForHardware(3,legacy)==4 && AsusControlDeviceCommandForHardware(4,legacy)==3);
         assert(AsusControlDeviceCommandForHardware(3,normalized)==3 && AsusControlDeviceCommandForHardware(4,normalized)==4);
+        assert([normalized[@"FnLockReadbackReliable"]isEqual:@NO]);
+        NSMutableDictionary *future=[normalized mutableCopy];future[@"FnLockReadbackReliable"]=@YES;
+        assert([AsusControlNormalizeFnStatus(future)[@"FnLockReadbackReliable"]isEqual:@YES]);
         NSMutableDictionary *other=[legacy mutableCopy];other[@"AsusControlHardwareProfile"]=@"Other ASUS";
         assert(![AsusControlNormalizeFnStatus(other)[@"FnLockHotkeys"]boolValue] && AsusControlDeviceCommandForHardware(3,other)==3);
         NSMutableDictionary *opposite=[legacy mutableCopy];opposite[@"FnLockHotkeys"]=@YES;

@@ -15,7 +15,7 @@
     AsusDeviceEnvironment *_monitor;
     NSDictionary *_hardware, *_system, *_preferences, *_agentState;
     BOOL _active, _refreshing, _busy, _refreshStopped;
-    NSString *_lastError, *_policyErrorRevision;
+    NSString *_lastError, *_policyErrorRevision, *_policyErrorFamily;
     NSTimeInterval _submittedAt;
 }
 @end
@@ -57,7 +57,10 @@
             self->_refreshing = NO; if (!self->_active) return;
             self->_hardware = hardware; self->_system = system; self->_preferences = preferences; self->_agentState = agent;
             if(self->_policyErrorRevision && [self->_policyErrorRevision isEqual:agent[@"Revision"]] &&
-                [agent[@"Revision"] isEqual:preferences[@"Revision"]] && [agent[@"Result"] isEqual:@"applied"]) {
+                [agent[@"Revision"] isEqual:preferences[@"Revision"]] &&
+                ([@[@"applied",@"accepted"] containsObject:agent[@"Result"] ?: @""] ||
+                    (self->_policyErrorFamily && ![self->_policyErrorFamily isEqual:@"all"] &&
+                        !agent[@"FailedFamilies"][self->_policyErrorFamily]))) {
                 self->_lastError=nil; self->_policyErrorRevision=nil;
             }
             if (error.code == 6) { self->_refreshStopped = YES; self->_lastError = error.localizedDescription; self->_policyErrorRevision = nil; }
@@ -87,13 +90,16 @@
             NSTimeInterval age = NSDate.date.timeIntervalSince1970 - started;
             message = age > 30 ? @"Automatic settings have not responded. Choose Try Again to restart them." : @"Applying settings…";
             failed = age > 30;
+        } else if ([_agentState[@"Result"] isEqual:@"accepted"]) {
+            // An accepted request is not a claim of physical verification.
+            message = @"";
         } else {
             // The UI reports completion only for this saved revision.
             message = @"Settings applied.";
         }
     }
     NSString *version = [NSString stringWithFormat:@"ASUS Control %s · AsusSMC %@", ASUS_CONTROL_VERSION, _hardware[@"AsusSMC-Version"] ?: @"Unavailable"];
-    [_ui updateWithHardware:_hardware ?: @{} system:_system ?: @{} preferences:preferences message:message error:failed busy:_busy version:version];
+    [_ui updateWithHardware:AsusFnStatusForUI(preferences,_hardware ?: @{},_agentState ?: @{}) system:_system ?: @{} preferences:preferences message:message error:failed busy:_busy version:version];
 }
 - (void)savePreferences:(NSDictionary *)preferences { [self savePreferences:preferences family:@"all"]; }
 - (void)savePreferences:(NSDictionary *)preferences family:(NSString *)family {
@@ -107,11 +113,22 @@
         BOOL success=NO;
         if(configured) {
             NSMutableDictionary *state=[AsusReadAgentState() mutableCopy];
-            if([family isEqual:@"all"]) [state removeObjectForKey:@"FailedFamilies"];
+            // Migrate accepted legacy Fn mismatches before an explicit retry
+            // clears failures; this avoids rewriting the already-working mode.
+            AsusRecoverFnReadbackState(saved,AsusControlReadStatus(),state);
+            if([family isEqual:@"all"]) {
+                if(state[@"FailedFamilies"][@"FnIntent"]) {
+                    // A genuine failed Fn request must be retried explicitly,
+                    // even if an older accepted selection happens to match.
+                    [state removeObjectForKey:@"FnIntent"];
+                    [state removeObjectForKey:@"FnAcceptedIntent"];
+                }
+                [state removeObjectForKey:@"FailedFamilies"];
+            }
             success=AsusApplyPolicyFamily(saved,family,self->_monitor,state,&error);
             state[@"Revision"]=saved[@"Revision"] ?: @"";
             NSDictionary *failures=state[@"FailedFamilies"];
-            state[@"Result"]=success && !failures.count ? @"applied" : @"failed";
+            state[@"Result"]=success && !failures.count ? AsusPolicyCompletionResult(saved,AsusControlReadStatus(),state) : @"failed";
             state[@"Version"]=@ASUS_CONTROL_VERSION;
             state[@"UpdatedAt"]=@(NSDate.date.timeIntervalSince1970);
             if(failures.count)state[@"Error"]=failures.allValues.firstObject;
@@ -126,6 +143,7 @@
             self->_submittedAt=NSDate.date.timeIntervalSince1970;
             self->_lastError=success ? nil : error.localizedDescription ?: @"The setting could not be applied.";
             self->_policyErrorRevision=!success && configured ? saved[@"Revision"] : nil;
+            self->_policyErrorFamily=self->_policyErrorRevision ? family : nil;
             [self displayStatus];
         });
     });
@@ -135,10 +153,15 @@
     NSMutableDictionary *preferences = [_preferences mutableCopy]; NSInteger number = [value integerValue];
     if ([key isEqual:@"QuickProfile"]) {
         if (number < 0 || number > 3) return;
-        preferences[@"ManualProfile"] = @(number); preferences[@"FanManaged"] = @YES;
+        preferences[@"ManualProfile"] = @(number); preferences[@"FanManaged"] = @YES; preferences[@"AutoPerformanceOnAC"] = @NO;
     } else if ([key isEqual:@"ManualProfile"]) {
         if (number < 0 || number > 3) return;
-        preferences[key] = @(number); preferences[@"FanManaged"] = @YES;
+        preferences[key] = @(number); preferences[@"FanManaged"] = @YES; preferences[@"AutoPerformanceOnAC"] = @NO;
+    } else if ([key isEqual:@"AutoPerformanceOnAC"]) {
+        preferences[key] = @([value boolValue]); preferences[@"FanManaged"] = @YES;
+        // A single automatic mode: Performance on eligible AC, Standard otherwise.
+        // Turning it off leaves Standard until another profile is selected.
+        preferences[@"ManualProfile"] = @0;
     } else if ([key isEqual:@"BatteryCare"]) {
         preferences[@"BatteryManaged"] = @YES; preferences[key] = @([value boolValue]); preferences[@"FullChargeUntil"] = @0;
     } else if ([key isEqual:@"FullCharge"]) {
@@ -151,7 +174,7 @@
     } else if ([key isEqual:@"BacklightTimeout"]) {
         if (![@[@30,@60,@180,@300,@600,@900] containsObject:@(number)]) return; preferences[key] = @(number);
     } else return;
-    NSString *family=[@[@"QuickProfile",@"ManualProfile"] containsObject:key] ? @"ThermalIntent" :
+    NSString *family=[@[@"QuickProfile",@"ManualProfile",@"AutoPerformanceOnAC"] containsObject:key] ? @"ThermalIntent" :
         [key isEqual:@"FnHotkeys"] ? @"FnIntent" : [@[@"BatteryCare",@"FullCharge"] containsObject:key] ? @"ChargeIntent" : @"keyboard";
     [self savePreferences:preferences family:family];
 }
@@ -170,8 +193,9 @@
         NSDictionary *hardware = AsusControlReadStatus();
         dispatch_async(dispatch_get_main_queue(), ^{
             self->_busy = NO; self->_hardware = hardware;
-            NSString *recovery = ![hardware[@"FnLockAvailable"] boolValue] ? @"Use the touchpad key to enable it." :
-                [hardware[@"FnLockHotkeys"] boolValue] ? @"Press F6 to enable it." : @"Press Fn + F6 to enable it.";
+            NSDictionary *fnStatus = AsusFnStatusForUI(self->_preferences,hardware,self->_agentState);
+            NSString *recovery = !fnStatus[@"FnSelectedHotkeys"] ? @"Use the touchpad key to enable it." :
+                [fnStatus[@"FnSelectedHotkeys"] boolValue] ? @"Press F6 to enable it." : @"Press Fn + F6 to enable it.";
             self->_lastError = confirmed ? nil : error.localizedDescription ?: [@"The touchpad change was not confirmed. " stringByAppendingString:recovery];
             [self displayStatus]; [self refresh];
         });

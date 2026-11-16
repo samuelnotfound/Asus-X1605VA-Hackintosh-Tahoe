@@ -18,6 +18,11 @@ int main(void) { @autoreleasepool {
     s[@"BatteryPercent"]=@75;s[@"ACPower"]=@NO;assert(AsusEffectiveProfile(p,s)==0);
     p[@"ManualProfile"]=@3;assert(AsusEffectiveProfile(p,s)==0);
     s[@"ACPower"]=@YES;assert(AsusEffectiveProfile(p,s)==3);
+    p[@"AutoPerformanceOnAC"]=@YES;p[@"ManualProfile"]=@1;
+    assert(AsusEffectiveProfile(p,s)==2);
+    s[@"ACPower"]=@NO;assert(AsusEffectiveProfile(p,s)==0);
+    s[@"ACPower"]=@YES;s[@"BatteryPercent"]=@40;assert(AsusEffectiveProfile(p,s)==0);
+    s[@"BatteryPercent"]=@75;assert(AsusEffectiveProfile(p,s)==2);
     p=[AsusDefaultPreferences()mutableCopy];p[@"FnManaged"]=@YES;p[@"FnHotkeys"]=@NO;
     assert([action(AsusPolicyActions(p,h,s,@{},1000),@"device")[@"Value"]isEqual:@4]);
     h[@"FnLockHotkeys"]=@NO;
@@ -43,5 +48,25 @@ int main(void) { @autoreleasepool {
     result=AsusExecutePolicyActions(@[fn],state,^BOOL(BOOL keyboard,uint32_t value,NSError **failure){(void)keyboard;(void)value;(void)failure;sends++;return YES;},
       ^NSDictionary *(NSError **failure){(void)failure;reads++;return @{@"FnLockAvailable":@YES,@"FnLockHotkeys":@(reads>=5)};},&error);
     assert(result && sends==1 && reads==5 && [state[@"FnIntent"]isEqual:@"fn:test"] && !state[@"FnPendingIntent"]);
-    puts("PASS: direct profiles, capability restrictions, battery deadline, Fn/idle state and readback mismatch. No switching policies.");
+    // A known stale mirror cannot establish failure or physical verification.
+    NSMutableDictionary *acceptedAction=[fn mutableCopy];acceptedAction[@"FnReadbackReliable"]=@NO;
+    [state removeAllObjects];sends=0;reads=0;
+    result=AsusExecutePolicyActions(@[acceptedAction],state,^BOOL(BOOL keyboard,uint32_t value,NSError **failure){(void)keyboard;(void)value;(void)failure;sends++;return YES;},
+      ^NSDictionary *(NSError **failure){(void)failure;reads++;return @{};},&error);
+    assert(result && sends==1 && reads==0 && [state[@"FnAcceptedIntent"]isEqual:@"fn:test"] && !state[@"FnIntent"]);
+    assert([state[@"FnVerification"]isEqual:@"acknowledged"]);
+    // Recovery is limited to the exact prior accepted readback mismatch. Keep
+    // unrelated errors and never promote a transport failure to accepted.
+    p=[AsusDefaultPreferences()mutableCopy];p[@"FnManaged"]=@YES;
+    h[@"FnLockReadbackReliable"]=@NO;
+    NSString *intent=AsusFnPolicyContext(p,h);
+    NSString *mismatch=@"Firmware acknowledged the function-key mode, but readback did not confirm it. Choose Try Again to reapply it.";
+    state=[@{@"FnPendingIntent":intent,@"FailedFamilies":@{@"FnIntent":mismatch,@"ChargeIntent":@"Charge rejected"},@"Error":mismatch}mutableCopy];
+    AsusRecoverFnReadbackState(p,h,state);
+    assert([state[@"FnAcceptedIntent"]isEqual:intent] && !state[@"FailedFamilies"][@"FnIntent"]);
+    assert([state[@"FailedFamilies"][@"ChargeIntent"]isEqual:@"Charge rejected"] && [state[@"Error"]isEqual:@"Charge rejected"]);
+    state=[@{@"FnPendingIntent":intent,@"FailedFamilies":@{@"FnIntent":@"The driver rejected the request."}}mutableCopy];
+    AsusRecoverFnReadbackState(p,h,state);
+    assert(state[@"FailedFamilies"][@"FnIntent"] && !state[@"FnAcceptedIntent"]);
+    puts("PASS: manual/automatic profiles, restrictions, deadlines, strict Fn readback, acknowledgement-only state and error-preserving recovery.");
 } }

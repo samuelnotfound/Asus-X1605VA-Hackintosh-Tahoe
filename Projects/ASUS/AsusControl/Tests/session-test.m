@@ -5,14 +5,18 @@
 static NSMutableDictionary *hardware;
 static NSMutableArray *commands;
 static NSURL *directory;
-static BOOL ignoreFn;
+static BOOL ignoreFn, rejectFn;
 static NSMutableDictionary *systemState;
 NSURL *AsusSupportDirectory(void) { return directory; }
 NSDictionary *AsusControlReadStatus(void) { return hardware; }
 BOOL AsusControlRefreshSettings(NSError **error) { (void)error; return YES; }
 BOOL AsusControlSendCommand(BOOL keyboard,uint32_t value,NSError **error) { (void)keyboard;(void)value;(void)error; assert(0); return NO; }
 BOOL AsusControlSendDeviceCommand(uint32_t value,NSError **error) {
-    (void)error;[commands addObject:@(value)];
+    [commands addObject:@(value)];
+    if(rejectFn && (value==3 || value==4)) {
+        if(error)*error=[NSError errorWithDomain:@"test" code:5 userInfo:@{NSLocalizedDescriptionKey:@"Firmware did not accept the requested setting."}];
+        return NO;
+    }
     if(value>=7 && value<=9){hardware[@"ThermalProfile"]=@(value-7);hardware[@"FanRequestedMode"]=@0;}
     if(value<=2)hardware[@"ChargeLimitRequested"]=@(value==1?80:100);
     if((value==3 || value==4) && !ignoreFn)hardware[@"FnLockHotkeys"]=@(value==3);
@@ -90,6 +94,15 @@ int main(void) { @autoreleasepool {
     hardware[@"DriverSessionID"]=@"boot-b:100";
     assert(AsusApplyPolicyFamily(p,@"all",environment,state,&error));
     assert(([commands isEqual:@[@1,@1,@1]]));
+    // Enabling automatic mode is valid even when ManualProfile is Standard.
+    p[@"BatteryManaged"]=@NO;p[@"FnManaged"]=@NO;p[@"FanManaged"]=@YES;
+    p[@"ManualProfile"]=@0;p[@"AutoPerformanceOnAC"]=@YES;
+    hardware[@"ThermalProfile"]=@0;systemState[@"ACPower"]=@YES;[state removeAllObjects];[commands removeAllObjects];
+    assert(AsusApplyPolicyFamily(p,@"ThermalIntent",environment,state,&error));
+    systemState[@"ACPower"]=@NO;assert(AsusApplyPolicyFamily(p,@"all",environment,state,&error));
+    systemState[@"ACPower"]=@YES;assert(AsusApplyPolicyFamily(p,@"all",environment,state,&error));
+    assert(([commands isEqual:@[@9,@7,@9]]));
+    p[@"AutoPerformanceOnAC"]=@NO;p[@"FanManaged"]=@NO;
     // Deliberate selections always send once, even when mirror + intent match;
     // background reconciliation must then stay quiet.
     p[@"BatteryManaged"]=@NO;p[@"FnManaged"]=@YES;p[@"FnHotkeys"]=@YES;
@@ -118,9 +131,37 @@ int main(void) { @autoreleasepool {
     p[@"FnHotkeys"]=@NO;hardware[@"FnLockHotkeys"]=@YES;
     assert(!AsusApplyPolicyFamily(p,@"all",environment,state,&error));
     assert(state[@"FailedFamilies"][@"FnIntent"]);
+    // Migrate the actual reported condition without rewriting the working mode.
+    hardware[@"FnLockReadbackReliable"]=@NO;hardware[@"FnLockHotkeys"]=@YES;
+    p[@"FnHotkeys"]=@NO;[state removeAllObjects];[commands removeAllObjects];
+    NSString *mismatch=@"Firmware acknowledged the function-key mode, but readback did not confirm it. Choose Try Again to reapply it.";
+    state[@"FnPendingIntent"]=AsusFnPolicyContext(p,hardware);
+    state[@"FailedFamilies"]=@{@"FnIntent":mismatch};state[@"Error"]=mismatch;
+    assert(AsusApplyPolicyFamily(p,@"all",environment,state,&error));
+    assert(commands.count==0 && !state[@"FailedFamilies"][@"FnIntent"] && !state[@"FnIntent"] && !state[@"Error"]);
+    assert([AsusPolicyCompletionResult(p,hardware,state)isEqual:@"accepted"]);
+    NSDictionary *display=AsusFnStatusForUI(p,hardware,state);
+    assert(![display[@"FnSelectedHotkeys"]boolValue] && [display[@"FnSelectionSource"]isEqual:@"acknowledged"]);
+    assert([display[@"FnLockHotkeys"]boolValue]); // Raw normalized mirror is preserved.
+    assert(AsusApplyPolicyFamily(p,@"all",environment,state,&error) && commands.count==0);
+    assert(AsusApplyPolicyFamily(p,@"FnIntent",environment,state,&error));
+    assert(([commands isEqual:@[@4]]));
+    assert(AsusApplyPolicyFamily(p,@"all",environment,state,&error) && commands.count==1);
+    p[@"FnHotkeys"]=@YES;
+    assert(AsusApplyPolicyFamily(p,@"all",environment,state,&error));
+    assert(([commands isEqual:@[@4,@3]]) && !state[@"FnIntent"]);
+    hardware[@"DriverSessionID"]=@"boot-d:100";
+    assert(AsusApplyPolicyFamily(p,@"all",environment,state,&error));
+    assert(([commands isEqual:@[@4,@3,@3]]));
+    // A real write rejection stays an error even if a prior request succeeded.
+    rejectFn=YES;
+    assert(!AsusApplyPolicyFamily(p,@"FnIntent",environment,state,&error) && error.code==5);
+    NSUInteger rejectedCount=commands.count;
+    assert(!AsusApplyPolicyFamily(p,@"all",environment,state,&error));
+    assert(commands.count==rejectedCount && state[@"FailedFamilies"][@"FnIntent"]);
     int first=AsusAcquirePolicyLock(0,&error);assert(first>=0);
     int second=AsusAcquirePolicyLock(0,&error);assert(second<0 && error.code==8);
     AsusReleasePolicyLock(first);second=AsusAcquirePolicyLock(0,&error);assert(second>=0);AsusReleasePolicyLock(second);
     [NSFileManager.defaultManager removeItemAtURL:directory error:NULL];
-    puts("PASS: isolated requests, AC/battery/low-charge fallback and restoration, stale-failure recovery, charge session refresh, deduplication and serialization. Fake driver only.");
+    puts("PASS: profile transitions, stale Fn-error migration without writes, accepted-mode hints, real rejection preservation, session refresh and serialization. Fake driver only.");
 } }

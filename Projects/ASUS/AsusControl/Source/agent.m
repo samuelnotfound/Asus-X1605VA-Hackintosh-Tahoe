@@ -35,7 +35,7 @@ int main(void) {
                         NSError *error=nil;
                         BOOL success=AsusControlRefreshSettings(&error) && AsusApplyPolicyFamily(p,@"all",environment,state,&error);
                         state[@"Revision"]=revision;state[@"Version"]=@ASUS_CONTROL_VERSION;
-                        state[@"Result"]=success ? @"applied" : @"failed";
+                        state[@"Result"]=success ? AsusPolicyCompletionResult(p,AsusControlReadStatus(),state) : @"failed";
                         state[@"UpdatedAt"]=@(NSDate.date.timeIntervalSince1970);
                         if(error)state[@"Error"]=error.localizedDescription;else[state removeObjectForKey:@"Error"];
                         AsusWriteAgentState(state,NULL);

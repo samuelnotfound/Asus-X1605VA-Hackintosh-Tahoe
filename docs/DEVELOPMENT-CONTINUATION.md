@@ -1,7 +1,7 @@
 # ASUS Control continuation — 2026-11-15
 
 Public repository `samuelnotfound/Asus-X1605VA-Hackintosh-Tahoe`.
-Project `Projects/ASUS/AsusControl`, pane/CLI/agent1.1.6. Keep software names
+Project `Projects/ASUS/AsusControl`, pane/CLI/agent1.1.7. Keep software names
 broad. Only X1605VA BIOS305 wiring is currently profiled. Do not publish private
 diagnostics, identities, raw ACPI tables, ignored backups or transcripts.
 
@@ -104,6 +104,63 @@ it held a stuck flock. ps was denied; no bypass attempted. No live writes,
 installation, agent restart, keyboard interception or EFI modification performed.
 New mapping still requires a physical test using the updated pane.
 
+## 1.1.7 acknowledgement, recovery hints and automatic Performance
+
+User confirms physical Fn switching works with1.1.6 but its readback warning
+persists. Read-only snapshot: accepted pending F1–F12 request, old successful
+hotkeys intent, DSTS mirror still reports hotkeys after client normalization.
+Do not infer physical mode from this stale mirror or keep rewriting the keys.
+
+Client marks FnLockReadbackReliable=false only on the known profile unless a
+future driver explicitly supplies true. Known-profile Fn writes record accepted
+intent/verification, not verified FnIntent. State result is accepted, not applied;
+no permanent mismatch banner. Actual rejections/timeouts remain errors. Exact
+same-session legacy Fn pending/readback-only failures migrate without a new
+command, preserving unrelated errors. Normal strict readback remains for other
+interfaces. Pane/agent both use the same classification. Native driver unchanged.
+
+FnSelectedHotkeys/FnSelectionSource are UI-only annotations: last accepted mode
+on this profile, reliable readback otherwise. Do not overwrite FnLockHotkeys.
+F1–F12 now immediately produces the correct Fn+F6 recovery hint despite stale
+mirror state. Touchpad and Function keys are separate groups, each with its own
+footer; inline confirmation and touchpad failure text use the same selection.
+Unknown mode gets a generic hint. No duplicate mode/status row is reintroduced.
+
+New user-requested AutoPerformanceOnAC toggle defaults off. Enabling opts into
+fan management with ManualProfile=Standard and uses Performance on AC above40%,
+Standard on battery/<=40%. Turning off leaves Standard. Manual card or Full Speed
+selection disables auto mode and applies that choice immediately. Existing
+manual Performance fallback/restoration is preserved. No per-source menu/LPM
+rules. This is post-login agent policy, not a firmware RPM algorithm change.
+
+No installation, live service edits, firmware writes or EFI changes during this
+work. Test the updated pane; no kext replacement or reboot is required.
+
+## Pending charging-inhibit request
+
+User asks for AlDente-like behavior: stop charging at80% while continuing to
+use the adapter, without forced battery discharge. Existing80/100 request still
+has no verified physical enforcement. No charging-inhibit implementation added
+in1.1.7. Do not claim Battery Care fixed or equate a request cache with charging.
+
+AlDente's published Helper.swift uses AppleSMC CH0B0/2 (and legacy BCLM for
+limits). Inspected VirtualSMC/SMCBatteryManager source contains no CH0B/BCLM
+backend. Copying that key cannot control the ASUS hardware. Saved DSDT exposes
+RSOC0x00120057 -> SRSC -> WEBC(6,2,buffer); its known80/100 calls acknowledge
+queueing, not actual enforcement. DSTS reads flags via REBC(5,2), not a verified
+numeric threshold. Linux asus-wmi likewise caches its requested threshold.
+DSDT SRSC has a special128 -> [80,1] encoding, whose extra flag semantics remain
+unknown; do not label it inhibit or write it speculatively. BCHG/CHGS are status
+reads, not charge enable setters. No verified immediate ASUS inhibit interface
+has been found. No fake SMC charge-control key or arbitrary-register API added.
+
+Latest read-only snapshot was71% on battery, negative current, no AC attached;
+it cannot verify behavior while charging past80%. A question is pending whether
+AlDente itself has worked on this laptop or was only a behavior reference. No
+normal-user firmware command was run from the sandbox, and the earlier denied
+write was not retried through another route. Next hardware work needs a proven
+ASUS command path and actual charging-current observations, not more UI polish.
+
 ## Driver source and build
 
 Separate AsusSMC checkout, branch
@@ -113,7 +170,7 @@ No published GitHub fork exists; do not claim one. Full diff is exported as
 Upstream MIT notices, identifier `com.hieplpvip.AsusSMC`, service and filename
 remain. Both MODULE_VERSION and CURRENT_PROJECT_VERSION stay upstream1.4.1.
 Settings API2 / feature revision4 identify added features, independently of
-ASUS Control1.1.6. MacKernelSDK/Lilu/VirtualSMC dependencies are pinned.
+ASUS Control1.1.7. MacKernelSDK/Lilu/VirtualSMC dependencies are pinned.
 
 No settings/fan boot arguments required with this new driver. Cached DSDT bytes
 match conservative signatures for the known RPM, thermal and Fn wiring, not

@@ -1,9 +1,9 @@
-# ASUS Control 1.1.6
+# ASUS Control 1.1.7
 
 ASUS device settings in one macOS preference pane, with native SwiftUI grouped
 rows and three large **Performance / Standard / Whisper** profile cards.
 **Full Speed** is a separate switch. There are no tabs, System Status dashboard,
-profile-switching menu, AC/battery profile rules, Low Power Mode rules, or
+profile-switching menu, per-source profile pickers, Low Power Mode rules, or
 requested-charging-limit row. Older saved switching rules are discarded.
 
 The current firmware profile is **ASUS X1605VA BIOS305**. Broad software naming
@@ -13,6 +13,7 @@ in the driver's explicit hardware profile. AsusSMC keeps its upstream identity.
 ## Controls
 
 - Fan profile cards, separate Full Speed override, and live RPM.
+- Optional “Automatically set to Performance when plugged in” switch.
 - Battery Care80% and temporary100% charging for24h.
 - Built-in touchpad switch with inline confirmation and Fn+F6 recovery hint.
 - Printed-hotkeys or F1–F12 primary behavior.
@@ -52,6 +53,13 @@ Firmware still chooses the RPM within whichever profile is active. The agent
 must be running for that source-dependent selection; automatic thermal RPM
 regulation itself does not depend on the pane staying open.
 
+The optional **Automatically set to Performance when plugged in** switch selects
+Performance on AC above40% charge and Standard on battery or at40% or below.
+Enabling it starts from Standard; turning it off leaves Standard. Selecting any
+profile or Full Speed turns automatic switching off so the manual choice applies
+immediately. Existing saved manual Performance restoration remains compatible.
+This single switch does not add per-source profile menus or Low Power Mode rules.
+
 ## Function-key switching
 
 The Function keys selector requests Printed hotkeys or F1–F12 primary behavior
@@ -70,21 +78,32 @@ replacing only the pane, without an EFI change or reboot. The compatibility
 conversion is skipped when the driver advertises normalized semantics, so the
 inversion is never applied twice or to unrelated ASUS profiles.
 
-The touchpad recovery hint follows active readback: **F6** in Printed hotkeys
-mode, **Fn+F6** in F1–F12 mode. The inline confirmation uses the same instruction.
-An unknown mode gets a generic touchpad-key hint rather than a guessed shortcut.
+Touchpad and Function keys occupy separate grouped sections with their own
+instructions. The touchpad recovery hint is **F6** in Printed hotkeys mode and
+**Fn+F6** in F1–F12 mode. On this profile it follows the last accepted selection,
+so a stale firmware mirror cannot show the opposite shortcut. The inline
+confirmation and failure hint use the same source. Unknown mode gets a generic
+touchpad-key hint rather than a guessed shortcut.
 
-A deliberate selection now sends one command even if the firmware's status
-mirror already shows that mode. The helper briefly polls readback after the
-acknowledgement instead of resending the write. If readback updates later, the
-agent clears the error and adopts that exact request without another write.
-Saved Fn intents are scoped to the loaded driver session, so an old success or
-failure cannot permanently suppress the next session's selection.
+A deliberate selection sends one command even if the firmware's status mirror
+already shows that mode. Saved requests are scoped to mode and driver session.
 
-The firmware command returns an acknowledgement even when its nested EC
-operation has not established physical success. A readback error therefore
-remains an error; it is not silently treated as success. Test F1 with and
-without Fn after switching. Physical reliability remains under investigation.
+**This profile's Fn status mirror is unreliable.** The user confirmed the keys
+switch physically while the mirror continues reporting the other mode.1.1.7
+therefore records `FnAcceptedIntent` / `FnVerification=acknowledged`, rather than
+calling a working accepted request a failure or claiming it was independently
+verified. Overall state is `accepted`, distinct from `applied`. It does not poll
+the stale mirror after every Fn write or resend it in later agent cycles.
+Existing accepted readback-mismatch errors are migrated without another write.
+Transport errors, command rejection and other control failures remain errors.
+
+Other interfaces retain strict readback unless the driver explicitly declares
+it unreliable. A future driver can supply `FnLockReadbackReliable=true` to opt
+back into verification if a reliable source is added. The raw normalized mirror
+is preserved in diagnostics. Acceptance alone still cannot automatically prove
+physical keyboard behavior. The user confirmed switching works with1.1.6;
+the updated warning handling and instructions need user testing.
+
 The standard WMI route is also used in
 [G-Helper's Fn-lock implementation](https://github.com/seerge/g-helper/blob/main/app/Input/InputDispatcher.cs);
 its USB keyboard fallback is not assumed compatible with this PS/2 keyboard.
@@ -94,7 +113,8 @@ its USB keyboard fallback is not assumed compatible with this PS/2 keyboard.
 Foreground clicks execute the **changed control only**, directly through the
 driver's queued interface. They do not wait for the agent's next five-second
 cycle or restart a healthy agent. A shared transaction lock serializes pane and
-agent operations. Readback confirms the result before the UI reports success.
+agent operations. Reliable readback confirms the result; the documented Fn
+exception records acceptance separately without claiming verification.
 The agent adopts confirmed foreground state without resending it.
 
 The extended driver wakes its existing workloop for accepted requests. Firmware
@@ -146,7 +166,7 @@ opted-in agent upgrades when the new pane opens. The build does not install it.
 
 Use one `AsusSMC.kext`, keeping the upstream **1.4.1** version and
 `com.hieplpvip.AsusSMC` identifier, with Lilu and VirtualSMC loaded first.
-ASUS Control1.1.6 and AsusSMC1.4.1 are separate projects with separate versions;
+ASUS Control1.1.7 and AsusSMC1.4.1 are separate projects with separate versions;
 `AsusControlAPIVersion=2` and feature revision4 identify the added interfaces.
 
 The extended driver recognizes the supported DSDT wiring from cached table

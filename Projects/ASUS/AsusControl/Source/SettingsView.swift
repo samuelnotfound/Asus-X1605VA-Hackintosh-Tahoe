@@ -46,8 +46,8 @@ private struct SettingsScreen: View {
     private var system: [String:Any] { model.system }
     private var preferences: [String:Any] { model.preferences }
     private var touchpadRecovery: String {
-        guard model.flag(hardware,"FnLockAvailable") else { return "Use the touchpad key to turn it back on." }
-        return model.flag(hardware,"FnLockHotkeys") ? "Press F6 to turn it back on." : "Press Fn + F6 to turn it back on."
+        guard let hotkeys = hardware["FnSelectedHotkeys"] as? NSNumber else { return "Use the touchpad key to turn it back on." }
+        return hotkeys.boolValue ? "Press F6 to turn it back on." : "Press Fn + F6 to turn it back on."
     }
     var body: some View {
         VStack(spacing: 0) {
@@ -89,10 +89,15 @@ private struct SettingsScreen: View {
                     let profile = enabled ? 3 : model.number(hardware,"ThermalProfile")
                     model.actions?.changeSetting("QuickProfile",value:NSNumber(value:profile))
                 })).disabled(!model.fullSpeedAvailable).opacity(model.fullSpeedAvailable ? 1 : 0.4)
+                Toggle("Automatically set to Performance when plugged in",isOn:model.bool("AutoPerformanceOnAC"))
+                    .disabled(!model.devices || !model.flag(hardware,"ThermalProfileValid"))
                 LabeledContent("Active profile",value:model.currentProfile)
                 LabeledContent("Fan speed",value:model.flag(hardware,"FanReadingValid") ? "\(model.number(hardware,"FanRPM")) RPM" : "Unavailable")
             } footer: {
-                Text("Profiles adjust fan speed automatically. Full Speed keeps the fan running at its full-speed setting.").fixedSize(horizontal:false,vertical:true)
+                Text(model.flag(preferences,"AutoPerformanceOnAC") ?
+                    "Uses Standard on battery. Performance requires more than 40% battery. Selecting a profile turns automatic switching off." :
+                    "Profiles adjust fan speed automatically. Full Speed keeps the fan running at its full-speed setting.")
+                    .fixedSize(horizontal:false,vertical:true)
             }
             Section {
                 Toggle("Battery Care",isOn:model.bool("BatteryCare")).disabled(!model.devices || !model.flag(hardware,"BatteryCareAvailable"))
@@ -147,12 +152,16 @@ private struct SettingsScreen: View {
                         }
                     }
                 }
+            } header: { Text("Input Devices") } footer: {
+                Text(touchpadRecovery).fixedSize(horizontal:false,vertical:true)
+            }
+            Section {
                 Picker("Function keys",selection:Binding(get:{model.flag(preferences,"FnHotkeys")},set:{model.actions?.changeSetting("FnHotkeys",value:NSNumber(value:$0))})) {
                     Text("Printed hotkeys").tag(true)
                     Text("F1–F12").tag(false)
                 }.disabled(!model.devices || !model.flag(hardware,"FnLockAvailable"))
-            } header: { Text("Input Devices") } footer: {
-                Text("Hold Fn to use the other function-key behavior. If the touchpad is disabled: \(touchpadRecovery)").fixedSize(horizontal:false,vertical:true)
+            } footer: {
+                Text("Hold Fn to use the other function-key behavior.").fixedSize(horizontal:false,vertical:true)
             }
             Section {
                 Picker("Turn off when idle",selection:model.integer("BacklightSleepMode")) {

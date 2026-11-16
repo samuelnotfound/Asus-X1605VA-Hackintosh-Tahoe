@@ -39,13 +39,19 @@ static BOOL legacyInvertedFn(NSDictionary *properties) {
         [properties[@"FnLockSemanticsVersion"] integerValue] < 1;
 }
 NSDictionary *AsusControlNormalizeFnStatus(NSDictionary *status) {
-    if (!legacyInvertedFn(status)) return status;
+    BOOL known = [status[@"AsusControlHardwareProfile"] isEqual:@"ASUS X1605VA / BIOS 305"];
+    if (!known) return status;
     NSMutableDictionary *result = [status mutableCopy];
-    if (status[@"FnLockHotkeys"]) result[@"FnLockHotkeys"] = @(![status[@"FnLockHotkeys"] boolValue]);
-    if (status[@"FnLockRequestedHotkeys"]) result[@"FnLockRequestedHotkeys"] = @(![status[@"FnLockRequestedHotkeys"] boolValue]);
-    result[@"FnLockSemanticsVersion"] = @1;
-    result[@"FnLockInverted"] = @YES;
-    result[@"FnLockCompatibilityMapping"] = @YES;
+    if (legacyInvertedFn(status)) {
+        if (status[@"FnLockHotkeys"]) result[@"FnLockHotkeys"] = @(![status[@"FnLockHotkeys"] boolValue]);
+        if (status[@"FnLockRequestedHotkeys"]) result[@"FnLockRequestedHotkeys"] = @(![status[@"FnLockRequestedHotkeys"] boolValue]);
+        result[@"FnLockSemanticsVersion"] = @1;
+        result[@"FnLockInverted"] = @YES;
+        result[@"FnLockCompatibilityMapping"] = @YES;
+    }
+    // This profile reads a shared firmware mirror, not the keyboard mode.
+    // Honor an explicit future driver capability if a reliable source is added.
+    if (known && !status[@"FnLockReadbackReliable"]) result[@"FnLockReadbackReliable"] = @NO;
     return result;
 }
 uint32_t AsusControlDeviceCommandForHardware(uint32_t command, NSDictionary *properties) {
@@ -79,7 +85,7 @@ NSDictionary *AsusControlReadStatus(void) {
         @"KeyboardControlAvailable", @"KeyboardPercent", @"KeyboardReadingValid", @"SettingsRefreshAvailable",
         @"AsusControlAPIVersion", @"AsusControlHardwareProfile", @"DeviceControlAllowed",
         @"AsusControlRevision", @"AsusControlAutoDetected", @"FnLockRaw", @"FnLockWriteAcknowledged", @"FnLockRequestedHotkeys",
-        @"FnLockSemanticsVersion", @"FnLockInverted",
+        @"FnLockSemanticsVersion", @"FnLockInverted", @"FnLockReadbackReliable",
         @"BatteryCareAvailable", @"ChargeLimitRequested", @"BatteryConservativeMode",
         @"FnLockAvailable", @"FnLockHotkeys", @"TrackpadControlAvailable", @"TrackpadReadingValid", @"TrackpadEnabled",
         @"PerformanceOnBattery", @"PerformanceMinimumBattery", @"FullSpeedOnBattery"];

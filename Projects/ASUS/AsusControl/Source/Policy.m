@@ -2,7 +2,7 @@
 #import "Policy.h"
 
 NSDictionary *AsusDefaultPreferences(void) {
-    return @{@"FanManaged":@NO, @"ManualProfile":@0, @"BatteryManaged":@NO, @"BatteryCare":@YES, @"FullChargeUntil":@0,
+    return @{@"FanManaged":@NO, @"ManualProfile":@0, @"AutoPerformanceOnAC":@NO, @"BatteryManaged":@NO, @"BatteryCare":@YES, @"FullChargeUntil":@0,
         @"FnManaged":@NO, @"FnHotkeys":@YES,
         @"BacklightSleepMode":@0, @"BacklightTimeout":@60};
 }
@@ -12,7 +12,7 @@ BOOL AsusNeedsAgent(NSDictionary *p) {
 }
 NSInteger AsusEffectiveProfile(NSDictionary *p, NSDictionary *system) {
     BOOL ac = [system[@"ACPower"] boolValue];
-    NSInteger profile = [p[@"ManualProfile"] integerValue];
+    NSInteger profile = [p[@"AutoPerformanceOnAC"] boolValue] ? (ac ? 2 : 0) : [p[@"ManualProfile"] integerValue];
     if (profile < 0 || profile > 3) return 0;
     // This is a capability of the current hardware profile, not every ASUS.
     if (!ac && profile == 2 && ![system[@"PerformanceOnBattery"] boolValue]) return 0;
@@ -30,6 +30,50 @@ NSString *AsusChargePolicyContext(NSDictionary *p, NSDictionary *h, NSDictionary
 NSString *AsusFnPolicyContext(NSDictionary *p, NSDictionary *h) {
     return [NSString stringWithFormat:@"fn:%@:semantics:1:driver:%@", [p[@"FnHotkeys"] boolValue] ? @"hotkeys" : @"functions",
         h[@"DriverSessionID"] ?: h[@"DriverRegistryEntryID"] ?: @"unknown"];
+}
+BOOL AsusFnReadbackReliable(NSDictionary *h) {
+    return !h[@"FnLockReadbackReliable"] || [h[@"FnLockReadbackReliable"] boolValue];
+}
+void AsusRecoverFnReadbackState(NSDictionary *p, NSDictionary *h, NSMutableDictionary *state) {
+    if (![p[@"FnManaged"] boolValue] || AsusFnReadbackReliable(h)) return;
+    NSString *intent = AsusFnPolicyContext(p,h);
+    NSMutableDictionary *failures = [state[@"FailedFamilies"] mutableCopy] ?: [NSMutableDictionary dictionary];
+    NSString *failure = failures[@"FnIntent"];
+    BOOL priorSuccess = !failure && [state[@"FnIntent"] isEqual:intent];
+    BOOL acceptedMismatch = [state[@"FnPendingIntent"] isEqual:intent] &&
+        [failure hasPrefix:@"Firmware acknowledged the function-key mode, but readback did not confirm it."];
+    if (!priorSuccess && !acceptedMismatch) return;
+    state[@"FnAcceptedIntent"] = intent;
+    state[@"FnVerification"] = @"acknowledged";
+    [state removeObjectForKey:@"FnIntent"];
+    [state removeObjectForKey:@"FnPendingIntent"];
+    if (acceptedMismatch) {
+        [failures removeObjectForKey:@"FnIntent"]; state[@"FailedFamilies"] = failures;
+        NSMutableDictionary *contexts = [state[@"FailedFamilyContexts"] mutableCopy] ?: [NSMutableDictionary dictionary];
+        [contexts removeObjectForKey:@"FnIntent"]; state[@"FailedFamilyContexts"] = contexts;
+        if ([state[@"Error"] isEqual:failure]) {
+            if (failures.count) state[@"Error"] = failures.allValues.firstObject;
+            else [state removeObjectForKey:@"Error"];
+        }
+    }
+}
+static BOOL fnAccepted(NSDictionary *p, NSDictionary *h, NSDictionary *state) {
+    return [p[@"FnManaged"] boolValue] && !AsusFnReadbackReliable(h) &&
+        [state[@"FnAcceptedIntent"] isEqual:AsusFnPolicyContext(p,h)];
+}
+NSString *AsusPolicyCompletionResult(NSDictionary *p, NSDictionary *h, NSDictionary *state) {
+    return fnAccepted(p,h,state) ? @"accepted" : @"applied";
+}
+NSDictionary *AsusFnStatusForUI(NSDictionary *p, NSDictionary *h, NSDictionary *state) {
+    NSMutableDictionary *display = [h mutableCopy] ?: [NSMutableDictionary dictionary];
+    if (fnAccepted(p,h,state)) {
+        display[@"FnSelectedHotkeys"] = p[@"FnHotkeys"];
+        display[@"FnSelectionSource"] = @"acknowledged";
+    } else if (AsusFnReadbackReliable(h) && [h[@"FnLockAvailable"] boolValue] && h[@"FnLockHotkeys"]) {
+        display[@"FnSelectedHotkeys"] = h[@"FnLockHotkeys"];
+        display[@"FnSelectionSource"] = @"readback";
+    }
+    return display;
 }
 NSArray<NSDictionary *> *AsusPolicyActions(NSDictionary *p, NSDictionary *h,
     NSDictionary *system, NSDictionary *state, NSTimeInterval now) {
@@ -57,8 +101,12 @@ NSArray<NSDictionary *> *AsusPolicyActions(NSDictionary *p, NSDictionary *h,
         BOOL matches=[h[@"FnLockHotkeys"] boolValue]==hotkeys;
         // DSTS reads a firmware mirror; a matching value does not establish
         // that this saved selection was actually sent in this driver session.
-        if (![state[@"FnIntent"] isEqual:intent] || !matches)
-            [actions addObject:@{@"Kind":@"device", @"Value":@(hotkeys ? 3 : 4), @"IntentKey":@"FnIntent", @"Intent":intent}];
+        BOOL reliable = AsusFnReadbackReliable(h);
+        BOOL needsRequest = reliable ? ![state[@"FnIntent"] isEqual:intent] || !matches :
+            ![state[@"FnAcceptedIntent"] isEqual:intent];
+        if (needsRequest)
+            [actions addObject:@{@"Kind":@"device", @"Value":@(hotkeys ? 3 : 4), @"IntentKey":@"FnIntent", @"Intent":intent,
+                @"FnReadbackReliable":@(reliable)}];
     }
     NSInteger sleepMode = [p[@"BacklightSleepMode"] integerValue];
     NSInteger timeout = [p[@"BacklightTimeout"] integerValue];
@@ -101,6 +149,14 @@ BOOL AsusExecutePolicyActions(NSArray<NSDictionary *> *actions, NSMutableDiction
         BOOL fn = [action[@"IntentKey"] isEqual:@"FnIntent"];
         if (fn) [state removeObjectForKey:@"FnPendingIntent"];
         if (!sender([kind isEqual:@"keyboard"], [action[@"Value"] unsignedIntValue], error)) return NO;
+        if (fn && action[@"FnReadbackReliable"] && ![action[@"FnReadbackReliable"] boolValue]) {
+            // Accepted is explicitly distinct from verified. Do not poll a
+            // known unreliable mirror or repeatedly rewrite a working mode.
+            state[@"FnAcceptedIntent"] = action[@"Intent"];
+            state[@"FnVerification"] = @"acknowledged";
+            [state removeObjectForKey:@"FnIntent"];
+            continue;
+        }
         if (fn) state[@"FnPendingIntent"] = action[@"Intent"];
         BOOL confirmed = NO;
         // Observe an accepted Fn request for longer; never resend the write.
@@ -119,7 +175,11 @@ BOOL AsusExecutePolicyActions(NSArray<NSDictionary *> *actions, NSMutableDiction
             return NO;
         }
         if (action[@"IntentKey"]) state[action[@"IntentKey"]] = action[@"Intent"];
-        if (fn) [state removeObjectForKey:@"FnPendingIntent"];
+        if (fn) {
+            [state removeObjectForKey:@"FnPendingIntent"];
+            [state removeObjectForKey:@"FnAcceptedIntent"];
+            state[@"FnVerification"] = @"readback";
+        }
         if (action[@"SaveKeyboard"]) { state[@"RestoreKeyboard"] = action[@"SaveKeyboard"]; state[@"Dimmed"] = @YES; }
         if (action[@"Restore"]) [state removeObjectForKey:@"Dimmed"];
     }
