@@ -1,4 +1,4 @@
-# ASUS Control 1.1.7
+# ASUS Control 1.1.8
 
 ASUS device settings in one macOS preference pane, with native SwiftUI grouped
 rows and three large **Performance / Standard / Whisper** profile cards.
@@ -13,7 +13,6 @@ in the driver's explicit hardware profile. AsusSMC keeps its upstream identity.
 ## Controls
 
 - Fan profile cards, separate Full Speed override, and live RPM.
-- Optional “Automatically set to Performance when plugged in” switch.
 - Battery Care80% and temporary100% charging for24h.
 - Built-in touchpad switch with inline confirmation and Fn+F6 recovery hint.
 - Printed-hotkeys or F1–F12 primary behavior.
@@ -46,19 +45,23 @@ to accelerate immediately if the laptop is cool. The displayed RPM is a
 firmware reading. The project does not provide an arbitrary RPM slider,
 custom fan curves or verified manufacturer minimum/maximum speeds.
 
-**Changing profiles on charger removal/reconnection is a separate userspace
-policy.** When Performance is selected, the login agent requests Standard on
-battery or at40% charge or below, then restores Performance on AC above40%.
-Firmware still chooses the RPM within whichever profile is active. The agent
-must be running for that source-dependent selection; automatic thermal RPM
-regulation itself does not depend on the pane staying open.
+**Profile selection is separate from firmware RPM regulation.** Performance is
+selected manually on AC with more than40% battery. The login agent retires that
+selection and requests Standard after a restart, AC disconnection, or a drop
+below40%. Reconnecting AC or recharging does not restore Performance; select it
+again. An already-active Performance profile may continue at exactly40%, but a
+new activation requires more than40%.
 
-The optional **Automatically set to Performance when plugged in** switch selects
-Performance on AC above40% charge and Standard on battery or at40% or below.
-Enabling it starts from Standard; turning it off leaves Standard. Selecting any
-profile or Full Speed turns automatic switching off so the manual choice applies
-immediately. Existing saved manual Performance restoration remains compatible.
-This single switch does not add per-source profile menus or Low Power Mode rules.
+The Performance-on-AC switch has been removed, and its retired saved flag is
+ignored. Restart reset is performed by the configured post-login agent; this
+project does not add a boot-time firmware write or claim Windows modern standby
+is equivalent to macOS sleep. Older saved Performance selections reset once
+when this policy first initializes. Closing/reopening Settings during the same
+boot does not reset a newly selected Performance profile.
+
+Firmware still regulates RPM within the chosen profile. Automatic thermal RPM
+regulation does not depend on the pane staying open; policy enforcement needs
+the opted-in login agent.
 
 ## Function-key switching
 
@@ -122,12 +125,12 @@ response and physical fan acceleration still take time. Accepted writes are not
 repeated while waiting for confirmation. Failures are isolated by control, so a
 Fn-mode error cannot stop fan or charging policies.
 
-When Performance is selected, the login agent uses Standard on battery or at
-40% charge or below. It preserves your selection and restores Performance on AC
-with more than40% charge. Selecting Standard or Whisper cancels that preference.
-The cards show the cached active profile, separately from whether a card can be
-selected. Full Speed is disabled without AC. This is userspace policy; firmware
-regulates fan speed within the chosen profile using its own thermal policy.
+The cards show the cached active profile separately from availability. Full
+Speed is disabled without AC. A click shows one16-point native spinning progress
+indicator beside its switch/menu, or at the lower-right of the requested fan
+card. Indicators disappear on completion or failure; full-pane startup/retry
+uses the same spinner. The “Applying settings…” banner is removed. Errors and
+timeout recovery remain visible. Native grouped rows and card layout are kept.
 
 Battery Care resends its request once after a driver session or power-source
 change and after its24h deadline. Cached intents from a previous boot cannot
@@ -136,7 +139,8 @@ firmware acknowledgement does not prove charging stopped. Charging above80%
 was reported and still requires physical retesting; no speculative EC writes
 or undocumented limit encodings have been introduced.
 
-The per-user agent restores chosen settings at login and handles charging
+The per-user agent applies saved settings at login, resets a previous
+Performance selection to Standard, and handles charging
 deadlines and keyboard idle restoration. It uses a live runloop for power
 notifications and wakes on configuration changes. New binaries or exited jobs
 are restarted; normal changes only signal the running service. It does not
@@ -166,7 +170,7 @@ opted-in agent upgrades when the new pane opens. The build does not install it.
 
 Use one `AsusSMC.kext`, keeping the upstream **1.4.1** version and
 `com.hieplpvip.AsusSMC` identifier, with Lilu and VirtualSMC loaded first.
-ASUS Control1.1.7 and AsusSMC1.4.1 are separate projects with separate versions;
+ASUS Control1.1.8 and AsusSMC1.4.1 are separate projects with separate versions;
 `AsusControlAPIVersion=2` and feature revision4 identify the added interfaces.
 
 The extended driver recognizes the supported DSDT wiring from cached table

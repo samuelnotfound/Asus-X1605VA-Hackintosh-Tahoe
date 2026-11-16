@@ -15,7 +15,8 @@
     AsusDeviceEnvironment *_monitor;
     NSDictionary *_hardware, *_system, *_preferences, *_agentState;
     BOOL _active, _refreshing, _busy, _refreshStopped;
-    NSString *_lastError, *_policyErrorRevision, *_policyErrorFamily;
+    NSString *_lastError, *_policyErrorRevision, *_policyErrorFamily, *_pendingControl;
+    NSNumber *_pendingValue;
     NSTimeInterval _submittedAt;
 }
 @end
@@ -76,9 +77,9 @@
         preferences[@"BatteryCare"] = @([_hardware[@"ChargeLimitRequested"] integerValue] == 80);
     if (![preferences[@"FanManaged"] boolValue])
         preferences[@"ManualProfile"] = [_hardware[@"FanRequestedMode"] integerValue] == 1 ? @3 : _hardware[@"ThermalProfile"] ?: @0;
-    NSString *message = @""; BOOL failed = NO;
+    NSString *message = @""; BOOL failed = NO, loading = _busy;
     if (_lastError.length) { message = _lastError; failed = YES; }
-    else if (_busy) message = @"Applying settings…";
+    else if (_busy) loading = YES;
     else if (![_hardware[@"DeviceControlAllowed"] boolValue])
         message = @"Device controls require the matching AsusSMC functions and compatible firmware.";
     else if (AsusNeedsAgent(preferences)) {
@@ -88,8 +89,8 @@
         } else if (!same || [_agentState[@"Result"] isEqual:@"applying"]) {
             NSTimeInterval started = same ? [_agentState[@"UpdatedAt"] doubleValue] : (_submittedAt ?: [_agentState[@"UpdatedAt"] doubleValue]);
             NSTimeInterval age = NSDate.date.timeIntervalSince1970 - started;
-            message = age > 30 ? @"Automatic settings have not responded. Choose Try Again to restart them." : @"Applying settings…";
-            failed = age > 30;
+            if (age > 30) { message = @"Automatic settings have not responded. Choose Try Again to restart them."; failed = YES; }
+            else loading = YES;
         } else if ([_agentState[@"Result"] isEqual:@"accepted"]) {
             // An accepted request is not a claim of physical verification.
             message = @"";
@@ -99,16 +100,19 @@
         }
     }
     NSString *version = [NSString stringWithFormat:@"ASUS Control %s · AsusSMC %@", ASUS_CONTROL_VERSION, _hardware[@"AsusSMC-Version"] ?: @"Unavailable"];
-    [_ui updateWithHardware:AsusFnStatusForUI(preferences,_hardware ?: @{},_agentState ?: @{}) system:_system ?: @{} preferences:preferences message:message error:failed busy:_busy version:version];
+    [_ui updateWithHardware:AsusFnStatusForUI(preferences,_hardware ?: @{},_agentState ?: @{}) system:_system ?: @{} preferences:preferences message:message error:failed busy:loading version:version pendingControl:loading ? (_pendingControl ?: @"all") : @"" pendingValue:_pendingValue];
 }
-- (void)savePreferences:(NSDictionary *)preferences { [self savePreferences:preferences family:@"all"]; }
-- (void)savePreferences:(NSDictionary *)preferences family:(NSString *)family {
+- (void)savePreferences:(NSDictionary *)preferences { [self savePreferences:preferences family:@"all" control:@"all" value:nil]; }
+- (void)savePreferences:(NSDictionary *)preferences family:(NSString *)family control:(NSString *)control value:(NSNumber *)value {
     if (_busy) return;
-    _busy=YES; _lastError=nil; _policyErrorRevision=nil; [self displayStatus];
+    _busy=YES; _pendingControl=control; _pendingValue=value;
+    _lastError=nil; _policyErrorRevision=nil; [self displayStatus];
     dispatch_async(_worker, ^{
         NSError *error=nil;
         int lock=AsusAcquirePolicyLock(3000,&error);
-        BOOL configured=lock>=0 && AsusConfigureAgent(self.bundle,preferences,&error);
+        BOOL explicitProfile=[@[@"QuickProfile",@"ManualProfile",@"FullSpeed"] containsObject:control];
+        NSDictionary *prepared=explicitProfile ? preferences : AsusFanSessionPreferences(preferences,AsusControlReadStatus(),[self->_monitor sample],AsusReadAgentState());
+        BOOL configured=lock>=0 && AsusConfigureAgent(self.bundle,prepared,&error);
         NSDictionary *saved=configured ? AsusReadPreferences() : self->_preferences;
         BOOL success=NO;
         if(configured) {
@@ -139,7 +143,7 @@
         AsusReleasePolicyLock(lock);
         NSDictionary *hardware=AsusControlReadStatus(), *agent=AsusReadAgentState();
         dispatch_async(dispatch_get_main_queue(), ^{
-            self->_busy=NO; self->_preferences=saved; self->_hardware=hardware; self->_agentState=agent;
+            self->_busy=NO; self->_pendingControl=nil; self->_pendingValue=nil; self->_preferences=saved; self->_hardware=hardware; self->_agentState=agent;
             self->_submittedAt=NSDate.date.timeIntervalSince1970;
             self->_lastError=success ? nil : error.localizedDescription ?: @"The setting could not be applied.";
             self->_policyErrorRevision=!success && configured ? saved[@"Revision"] : nil;
@@ -153,15 +157,14 @@
     NSMutableDictionary *preferences = [_preferences mutableCopy]; NSInteger number = [value integerValue];
     if ([key isEqual:@"QuickProfile"]) {
         if (number < 0 || number > 3) return;
-        preferences[@"ManualProfile"] = @(number); preferences[@"FanManaged"] = @YES; preferences[@"AutoPerformanceOnAC"] = @NO;
+        preferences[@"ManualProfile"] = @(number); preferences[@"FanManaged"] = @YES;
     } else if ([key isEqual:@"ManualProfile"]) {
         if (number < 0 || number > 3) return;
-        preferences[key] = @(number); preferences[@"FanManaged"] = @YES; preferences[@"AutoPerformanceOnAC"] = @NO;
-    } else if ([key isEqual:@"AutoPerformanceOnAC"]) {
-        preferences[key] = @([value boolValue]); preferences[@"FanManaged"] = @YES;
-        // A single automatic mode: Performance on eligible AC, Standard otherwise.
-        // Turning it off leaves Standard until another profile is selected.
-        preferences[@"ManualProfile"] = @0;
+        preferences[key] = @(number); preferences[@"FanManaged"] = @YES;
+    } else if ([key isEqual:@"FullSpeed"]) {
+        NSInteger profile = [value boolValue] ? 3 : [_hardware[@"ThermalProfile"] integerValue];
+        if(profile < 0 || profile > 3) profile = 0;
+        preferences[@"ManualProfile"] = @(profile); preferences[@"FanManaged"] = @YES;
     } else if ([key isEqual:@"BatteryCare"]) {
         preferences[@"BatteryManaged"] = @YES; preferences[key] = @([value boolValue]); preferences[@"FullChargeUntil"] = @0;
     } else if ([key isEqual:@"FullCharge"]) {
@@ -174,14 +177,15 @@
     } else if ([key isEqual:@"BacklightTimeout"]) {
         if (![@[@30,@60,@180,@300,@600,@900] containsObject:@(number)]) return; preferences[key] = @(number);
     } else return;
-    NSString *family=[@[@"QuickProfile",@"ManualProfile",@"AutoPerformanceOnAC"] containsObject:key] ? @"ThermalIntent" :
+    NSString *family=[@[@"QuickProfile",@"ManualProfile",@"FullSpeed"] containsObject:key] ? @"ThermalIntent" :
         [key isEqual:@"FnHotkeys"] ? @"FnIntent" : [@[@"BatteryCare",@"FullCharge"] containsObject:key] ? @"ChargeIntent" : @"keyboard";
-    [self savePreferences:preferences family:family];
+    [self savePreferences:preferences family:family control:key value:value];
 }
 - (void)retrySettings { _refreshStopped = NO; [self savePreferences:_preferences]; }
 - (void)setTouchpadEnabled:(BOOL)enabled {
     if (_busy || ![_hardware[@"TrackpadControlAvailable"] boolValue]) return;
-    _busy = YES; _lastError = nil; _policyErrorRevision = nil; [self displayStatus];
+    _busy = YES; _pendingControl = @"Touchpad"; _pendingValue = @(enabled);
+    _lastError = nil; _policyErrorRevision = nil; [self displayStatus];
     dispatch_async(_worker, ^{
         NSError *error = nil;
         BOOL success = AsusControlSendDeviceCommand(enabled ? 5 : 6, &error), confirmed = NO;
@@ -192,7 +196,7 @@
         }
         NSDictionary *hardware = AsusControlReadStatus();
         dispatch_async(dispatch_get_main_queue(), ^{
-            self->_busy = NO; self->_hardware = hardware;
+            self->_busy = NO; self->_pendingControl = nil; self->_pendingValue = nil; self->_hardware = hardware;
             NSDictionary *fnStatus = AsusFnStatusForUI(self->_preferences,hardware,self->_agentState);
             NSString *recovery = !fnStatus[@"FnSelectedHotkeys"] ? @"Use the touchpad key to enable it." :
                 [fnStatus[@"FnSelectedHotkeys"] boolValue] ? @"Press F6 to enable it." : @"Press Fn + F6 to enable it.";

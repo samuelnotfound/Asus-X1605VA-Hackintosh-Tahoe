@@ -76,8 +76,10 @@ NSDictionary *AsusControlReadStatus(void) {
     if (identityKnown) {
         status[@"DriverRegistryEntryID"] = @(registryID);
         struct timeval boot = {0}; size_t size = sizeof(boot);
-        if (sysctlbyname("kern.boottime", &boot, &size, NULL, 0) == 0)
-            status[@"DriverSessionID"] = [NSString stringWithFormat:@"%lld.%d:%llu", (long long)boot.tv_sec, (int)boot.tv_usec, (unsigned long long)registryID];
+        if (sysctlbyname("kern.boottime", &boot, &size, NULL, 0) == 0) {
+            status[@"BootSessionID"] = [NSString stringWithFormat:@"%lld.%d", (long long)boot.tv_sec, (int)boot.tv_usec];
+            status[@"DriverSessionID"] = [NSString stringWithFormat:@"%@:%llu", status[@"BootSessionID"], (unsigned long long)registryID];
+        }
     }
     NSArray *keys = @[@"AsusSMC-Version", @"X1605VA-ControlAPIVersion", @"FanBackend",
         @"FanRPM", @"FanReadingValid", @"FanSamples", @"FanControlAllowed",

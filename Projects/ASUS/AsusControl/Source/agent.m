@@ -33,7 +33,10 @@ int main(void) {
                     NSMutableDictionary *state=[AsusReadAgentState() mutableCopy];
                     { // Failed families are skipped independently; other controls keep working.
                         NSError *error=nil;
-                        BOOL success=AsusControlRefreshSettings(&error) && AsusApplyPolicyFamily(p,@"all",environment,state,&error);
+                        NSDictionary *prepared=AsusFanSessionPreferences(p,AsusControlReadStatus(),[environment sample],state);
+                        BOOL saved=[prepared isEqual:p] || AsusWritePreferences(prepared,&error);
+                        if(saved) p=prepared;
+                        BOOL success=saved && AsusControlRefreshSettings(&error) && AsusApplyPolicyFamily(p,@"all",environment,state,&error);
                         state[@"Revision"]=revision;state[@"Version"]=@ASUS_CONTROL_VERSION;
                         state[@"Result"]=success ? AsusPolicyCompletionResult(p,AsusControlReadStatus(),state) : @"failed";
                         state[@"UpdatedAt"]=@(NSDate.date.timeIntervalSince1970);

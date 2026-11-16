@@ -15,6 +15,12 @@ static unsigned scrollViews(NSView *view) {
     for(NSView *child in view.subviews)count+=scrollViews(child);
     return count;
 }
+static NSArray<NSProgressIndicator *> *spinners(NSView *view) {
+    NSMutableArray *result=[NSMutableArray array];
+    if([view isKindOfClass:NSProgressIndicator.class]) [result addObject:view];
+    for(NSView *child in view.subviews) [result addObjectsFromArray:spinners(child)];
+    return result;
+}
 int main(int argc,const char **argv) {
  @autoreleasepool {
     if(argc!=3)return 2;
@@ -49,6 +55,23 @@ int main(int argc,const char **argv) {
     [pane performSelector:@selector(displayStatus)];
     [window setContentSize:NSMakeSize(660,1000)];
     snapshot(container,[[NSString stringWithUTF8String:argv[2]]stringByAppendingPathComponent:@"Pane-Battery-Dark.png"]);
-    puts("PASS: single native scrolling pane, no tabs, host resizing and light/dark card layout. No firmware writes.");
+    [window setContentSize:NSMakeSize(660,1600)];
+    for(NSString *control in @[@"QuickProfile",@"FullSpeed",@"Touchpad",@"FnHotkeys",@"BacklightTimeout",@"all"]) {
+        [pane setValue:@YES forKey:@"busy"];
+        [pane setValue:control forKey:@"pendingControl"];
+        [pane setValue:@1 forKey:@"pendingValue"];
+        [pane performSelector:@selector(displayStatus)];settle(view);
+        NSArray *indicators=spinners(view);assert(indicators.count==1);
+        NSProgressIndicator *indicator=indicators.firstObject;
+        assert(indicator.isIndeterminate && indicator.style==NSProgressIndicatorStyleSpinning);
+        assert(fabs(indicator.bounds.size.width-16)<1 && fabs(indicator.bounds.size.height-16)<1);
+        if([control isEqual:@"QuickProfile"]) {
+            NSRect rect=[indicator convertRect:indicator.bounds toView:view];assert(NSMidX(rect)>440);
+        }
+        snapshot(container,[[NSString stringWithUTF8String:argv[2]]stringByAppendingPathComponent:[NSString stringWithFormat:@"Pane-Loading-%@.png",control]]);
+        [pane setValue:@NO forKey:@"busy"];
+        [pane performSelector:@selector(displayStatus)];settle(view);assert(spinners(view).count==0);
+    }
+    puts("PASS: single native scrolling pane, no tabs, host resizing, light/dark layout and matching 16pt native spinners with completion cleanup. No firmware writes.");
  }
 }

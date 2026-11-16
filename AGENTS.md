@@ -4,7 +4,7 @@ Read `docs/DEVELOPMENT-CONTINUATION.md` before changing this repository.
 
 - This is the current public Tahoe repository. Never copy private diagnostics,
   credentials, identity values, EFI backups or chat transcripts here.
-- Active settings project: `Projects/ASUS/AsusControl`, version 1.1.7,
+- Active settings project: `Projects/ASUS/AsusControl`, version 1.1.8,
   displayed as ASUS Control. Keep it separate from deprecated Assistant code.
 - Use broad software names; board names belong in explicit hardware profiles
   and compatibility notes. Only X1605VA BIOS 305 is currently profiled.
@@ -13,18 +13,25 @@ Read `docs/DEVELOPMENT-CONTINUATION.md` before changing this repository.
   duplicate fan controls; fit the host size and use one scrolling form. Restore
   three large Performance/Standard/Whisper cards. One pane, no tabs, dashboard,
   profile-switching menu, per-source profile pickers or Low Power Mode rules. The
-  user requested one opt-in AutoPerformanceOnAC switch: Performance on eligible
-  AC, Standard otherwise; manual card/Full Speed selection disables it. No requested
+  former AutoPerformanceOnAC switch is removed and its saved flag ignored.
+  Performance requires AC and>40%; return to Standard on restart, AC loss or
+  below40%, retiring the saved selection. Never restore it just on reconnect.
+  No requested
   charging-limit row. No brightness slider, microphone or screen brightness.
 - Current scope: fan monitoring/modes, battery care/24h full charge,
   direct profiles, touchpad, Fn mode and backlight idle timeout. Preserve physical four-step keyboard-light cycling.
-- Pane, utility and optional login agent share VERSION (1.1.7). Keep AsusSMC's
+- Pane, utility and optional login agent share VERSION (1.1.8). Keep AsusSMC's
   upstream version1.4.1 unchanged. Added settings are API2 / feature revision4.
   Cached DSDT wiring detection replaces boot-argument requirements; no model
   detection based on spoofed SMBIOS. No new firmware discovery at boot.
-- Performance falls back to Standard on battery or <=40% charge; restore the
-  saved Performance selection on eligible AC. This is the user's latest choice.
-  No separate profile-switching UI. Keep the active card legible when disabled.
+- Latest fan policy follows the user's Windows behavior: manual Performance,
+  >40% to activate, already active may stay at40%, below40% returns to Standard.
+  Restart detection uses BootSessionID and FanBootSessionID; the opted-in agent
+  persists Standard before executing policies. Explicit new manual selections
+  initialize the boot marker and are not reset during the same boot.
+- Use identical16pt native spinners for changed controls and card lower-right.
+  No Applying settings banner. Clear indicators after completion/failure; retain
+  actual errors. Preserve native grouping and the existing card design.
 - No duplicate content title or current-Fn-mode row. Keep one Fn selector.
   Card titles are exactly Performance, Standard, Whisper; preserve descriptions.
 - Deliberate Fn selections send once despite a matching firmware mirror.

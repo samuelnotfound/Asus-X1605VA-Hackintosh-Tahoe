@@ -2,7 +2,7 @@
 #import "Policy.h"
 
 NSDictionary *AsusDefaultPreferences(void) {
-    return @{@"FanManaged":@NO, @"ManualProfile":@0, @"AutoPerformanceOnAC":@NO, @"BatteryManaged":@NO, @"BatteryCare":@YES, @"FullChargeUntil":@0,
+    return @{@"FanManaged":@NO, @"ManualProfile":@0, @"BatteryManaged":@NO, @"BatteryCare":@YES, @"FullChargeUntil":@0,
         @"FnManaged":@NO, @"FnHotkeys":@YES,
         @"BacklightSleepMode":@0, @"BacklightTimeout":@60};
 }
@@ -12,14 +12,40 @@ BOOL AsusNeedsAgent(NSDictionary *p) {
 }
 NSInteger AsusEffectiveProfile(NSDictionary *p, NSDictionary *system) {
     BOOL ac = [system[@"ACPower"] boolValue];
-    NSInteger profile = [p[@"AutoPerformanceOnAC"] boolValue] ? (ac ? 2 : 0) : [p[@"ManualProfile"] integerValue];
+    NSInteger profile = [p[@"ManualProfile"] integerValue];
     if (profile < 0 || profile > 3) return 0;
     // This is a capability of the current hardware profile, not every ASUS.
     if (!ac && profile == 2 && ![system[@"PerformanceOnBattery"] boolValue]) return 0;
     if (!ac && profile == 3 && ![system[@"FullSpeedOnBattery"] boolValue]) return 0;
     NSInteger minimum = system[@"PerformanceMinimumBattery"] ? [system[@"PerformanceMinimumBattery"] integerValue] : 40;
-    if (profile == 2 && minimum > 0 && (![system[@"BatteryKnown"] boolValue] || [system[@"BatteryPercent"] integerValue] <= minimum)) return 0;
+    if (profile == 2 && minimum > 0) {
+        BOOL active = [system[@"PerformanceActive"] boolValue];
+        if (![system[@"BatteryKnown"] boolValue]) return active ? 2 : 0;
+        double percent = [system[@"BatteryPercent"] doubleValue];
+        if (percent < minimum || (percent == minimum && !active)) return 0;
+    }
     return profile;
+}
+static BOOL performanceActive(NSDictionary *h) {
+    return [h[@"ThermalProfileValid"] boolValue] && [h[@"ThermalProfile"] integerValue] == 2 &&
+        [h[@"FanRequestedMode"] integerValue] != 1;
+}
+NSDictionary *AsusFanSessionPreferences(NSDictionary *p, NSDictionary *h, NSDictionary *system, NSDictionary *state) {
+    NSMutableDictionary *next = [p mutableCopy];
+    [next removeObjectForKey:@"AutoPerformanceOnAC"];
+    if (![p[@"FanManaged"] boolValue] || [p[@"ManualProfile"] integerValue] != 2) return next;
+    NSString *boot = h[@"BootSessionID"];
+    BOOL restarted = boot && ![state[@"FanBootSessionID"] isEqual:boot];
+    BOOL unplugged = [system[@"PowerSourceKnown"] boolValue] && ![system[@"ACPower"] boolValue] &&
+        ![h[@"PerformanceOnBattery"] boolValue];
+    double minimum = h[@"PerformanceMinimumBattery"] ? [h[@"PerformanceMinimumBattery"] doubleValue] : 40;
+    double percent = [system[@"BatteryPercent"] doubleValue];
+    BOOL low = minimum > 0 && [system[@"BatteryKnown"] boolValue] &&
+        (percent < minimum || (percent == minimum && !performanceActive(h)));
+    // Retire the preference, rather than temporarily overriding it and later
+    // restoring Performance on reconnect. This runs in the user session only.
+    if (restarted || unplugged || low) next[@"ManualProfile"] = @0;
+    return next;
 }
 NSString *AsusChargePolicyContext(NSDictionary *p, NSDictionary *h, NSDictionary *system, NSTimeInterval now) {
     BOOL temporary = [p[@"BatteryCare"] boolValue] && [p[@"FullChargeUntil"] doubleValue] > now;
@@ -88,7 +114,9 @@ NSArray<NSDictionary *> *AsusPolicyActions(NSDictionary *p, NSDictionary *h,
             [actions addObject:@{@"Kind":@"device", @"Value":@(limit == 80 ? 1 : 2), @"IntentKey":@"ChargeIntent", @"Intent":intent}];
     }
     if ([p[@"FanManaged"] boolValue] && [h[@"ThermalProfileValid"] boolValue] && [system[@"PowerSourceKnown"] boolValue]) {
-        NSInteger profile = AsusEffectiveProfile(p, system);
+        NSMutableDictionary *eligibility = [system mutableCopy];
+        eligibility[@"PerformanceActive"] = @(performanceActive(h));
+        NSInteger profile = AsusEffectiveProfile(p, eligibility);
         NSString *intent = [NSString stringWithFormat:@"profile:%ld", (long)profile];
         BOOL actualMatches = h[@"FanRequestedMode"] && (profile == 3 ? [h[@"FanRequestedMode"] integerValue] == 1 :
             [h[@"ThermalProfile"] integerValue] == profile && [h[@"FanRequestedMode"] integerValue] != 1);

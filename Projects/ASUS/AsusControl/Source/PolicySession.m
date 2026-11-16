@@ -32,7 +32,7 @@ static BOOL applyOne(NSDictionary *p,NSString *family,BOOL foreground,NSDictiona
     if(fan && (![hardware[@"ThermalProfileValid"] boolValue] || ![system[@"PowerSourceKnown"] boolValue])) unavailable=@"The current fan profile or power source is unavailable.";
     if(([family isEqual:@"all"] || [family isEqual:@"FnIntent"]) && [p[@"FnManaged"] boolValue] && ![hardware[@"FnLockAvailable"] boolValue]) unavailable=@"Function-key mode is unavailable with the current firmware.";
     if(([family isEqual:@"all"] || [family isEqual:@"ChargeIntent"]) && [p[@"BatteryManaged"] boolValue] && ![hardware[@"BatteryCareAvailable"] boolValue]) unavailable=@"Charging control is unavailable with the current firmware.";
-    if(fan && foreground && [family isEqual:@"ThermalIntent"] && ![p[@"AutoPerformanceOnAC"] boolValue] && AsusEffectiveProfile(p,system)!=[p[@"ManualProfile"] integerValue])
+    if(fan && foreground && [family isEqual:@"ThermalIntent"] && AsusEffectiveProfile(p,system)!=[p[@"ManualProfile"] integerValue])
         unavailable=@"This profile is unavailable on the power source macOS currently reports. Connect the power adapter; Performance also requires more than 40% battery.";
     if(unavailable) { if(error)*error=[NSError errorWithDomain:@"com.samuelnotfound.AsusControl.Policy" code:4 userInfo:@{NSLocalizedDescriptionKey:unavailable}];return NO; }
     NSMutableDictionary *decisionState=[state mutableCopy];
@@ -58,16 +58,19 @@ static BOOL applyOne(NSDictionary *p,NSString *family,BOOL foreground,NSDictiona
 BOOL AsusApplyPolicyFamily(NSDictionary *p,NSString *family,AsusDeviceEnvironment *environment,NSMutableDictionary *state,NSError **error) {
     if(error)*error=nil;
     NSDictionary *hardware=AsusControlReadStatus();
+    if(hardware[@"BootSessionID"]) state[@"FanBootSessionID"]=hardware[@"BootSessionID"];
     AsusRecoverFnReadbackState(p,hardware,state);
     NSMutableDictionary *failures=[state[@"FailedFamilies"] mutableCopy] ?: [NSMutableDictionary dictionary];
     BOOL all=[family isEqual:@"all"], requestedSucceeded=YES;
     NSMutableDictionary *system=[[environment sample] mutableCopy];
+    system[@"PerformanceActive"]=@([hardware[@"ThermalProfileValid"] boolValue] &&
+        [hardware[@"ThermalProfile"] integerValue]==2 && [hardware[@"FanRequestedMode"] integerValue]!=1);
     for(NSString *key in @[@"PerformanceOnBattery",@"PerformanceMinimumBattery",@"FullSpeedOnBattery"])
         if(hardware[key]) system[key]=hardware[key];
     NSDictionary *contexts=@{
-        @"ThermalIntent":[NSString stringWithFormat:@"driver:%@:power:%@:effective:%ld",
+        @"ThermalIntent":[NSString stringWithFormat:@"driver:%@:power:%@:effective:%ld:requested:%ld",
             hardware[@"DriverSessionID"] ?: hardware[@"DriverRegistryEntryID"] ?: @"unknown", system[@"PowerSourceKnown"] ? system[@"ACPower"] : @"unknown",
-            (long)AsusEffectiveProfile(p,system)],
+            (long)AsusEffectiveProfile(p,system),(long)[p[@"ManualProfile"] integerValue]],
         @"ChargeIntent":AsusChargePolicyContext(p,hardware,system,NSDate.date.timeIntervalSince1970),
         @"FnIntent":AsusFnPolicyContext(p,hardware)};
     NSMutableDictionary *failedContexts=[state[@"FailedFamilyContexts"] mutableCopy] ?: [NSMutableDictionary dictionary];

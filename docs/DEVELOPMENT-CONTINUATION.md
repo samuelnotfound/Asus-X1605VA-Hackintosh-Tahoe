@@ -1,7 +1,7 @@
 # ASUS Control continuation — 2026-11-15
 
 Public repository `samuelnotfound/Asus-X1605VA-Hackintosh-Tahoe`.
-Project `Projects/ASUS/AsusControl`, pane/CLI/agent1.1.7. Keep software names
+Project `Projects/ASUS/AsusControl`, pane/CLI/agent1.1.8. Keep software names
 broad. Only X1605VA BIOS305 wiring is currently profiled. Do not publish private
 diagnostics, identities, raw ACPI tables, ignored backups or transcripts.
 
@@ -15,9 +15,9 @@ diagnostics, identities, raw ACPI tables, ignored backups or transcripts.
 - Full Speed separate switch, disabled/gray without AC. Active profile remains
   explicit/legible independently of whether a profile is available to select.
 - No profile-switching UI, custom AC/battery rules or Low Power Mode override.
-- Latest correction: preserve Performance selection, use Standard when off AC
-  or at<=40%, restore Performance when eligible AC returns. Earlier answer to
-  keep Standard was superseded. Selecting another card replaces the preference.
+- Latest correction supersedes earlier restore/auto rules: remove the
+  Performance-on-AC switch. Performance is manual and requires AC+>40%; retire
+  it to Standard on restart, unplugging or below40%. Reconnect does not restore.
 - Keep Battery Care/24h full charge, touchpad confirmation, Fn mode, keyboard
   idle timeout. No requested-limit row, brightness slider, microphone or remaps.
 - Keep AsusSMC upstream version unchanged; no required boot arguments.
@@ -136,6 +136,35 @@ rules. This is post-login agent policy, not a firmware RPM algorithm change.
 No installation, live service edits, firmware writes or EFI changes during this
 work. Test the updated pane; no kext replacement or reboot is required.
 
+## 1.1.8 Windows-style profile lifetime and native loading indicators
+
+User removed the automatic Performance-on-AC switch and requested Windows-like
+behavior. Supersedes the1.1.7 automatic mode and earlier restore-on-reconnect
+preference. Retired AutoPerformanceOnAC is ignored on preference read. The agent
+persists ManualProfile=Standard when Performance loses AC, drops below40%, or a
+new boot is detected. Reconnect/recharge cannot resurrect the selection. More
+than40% is required to start; an active profile can remain at exactly40%.
+BootSessionID derives from kern.boottime, separate from driver identity. The
+shared executor records FanBootSessionID for explicit new selections, so opening
+Settings or restarting the agent within a boot does not erase a current choice.
+Older unsessioned saved Performance selections reset once on policy upgrade.
+No kernel/EFI or pre-login writes, and no modern-standby/macOS-sleep equivalence
+is claimed. Tests simulate power/threshold/reboot and verify no restoration.
+
+Removed Applying settings text. Native16pt NSProgressIndicator widgets appear
+beside the changed switch/menu label; a requested fan card gets one at its
+lower-right. Startup/retry-all gets the same small top-right spinner. Pending
+control/value are transient pane/UI metadata, cleared on completion/failure.
+Full Speed has a dedicated UI command key for targeted indication; its hardware
+command behavior is preserved. Controls remain disabled while pending and real
+errors/timeouts stay visible. Offscreen tests check widget style,16pt bounds,
+card targeting and removal after completion; no live service/firmware calls.
+
+Performance note is concise. The footer under the fan controls reads
+“Full Speed overrides the selected profile.” Restart/source behavior is
+implemented in policy and documented in the README. Keyboard-light note keeps only: “The keyboard light returns to its
+previous level when you resume using the computer.” No layout redesign.
+
 ## Pending charging-inhibit request
 
 User asks for AlDente-like behavior: stop charging at80% while continuing to
@@ -170,7 +199,7 @@ No published GitHub fork exists; do not claim one. Full diff is exported as
 Upstream MIT notices, identifier `com.hieplpvip.AsusSMC`, service and filename
 remain. Both MODULE_VERSION and CURRENT_PROJECT_VERSION stay upstream1.4.1.
 Settings API2 / feature revision4 identify added features, independently of
-ASUS Control1.1.7. MacKernelSDK/Lilu/VirtualSMC dependencies are pinned.
+ASUS Control1.1.8. MacKernelSDK/Lilu/VirtualSMC dependencies are pinned.
 
 No settings/fan boot arguments required with this new driver. Cached DSDT bytes
 match conservative signatures for the known RPM, thermal and Fn wiring, not

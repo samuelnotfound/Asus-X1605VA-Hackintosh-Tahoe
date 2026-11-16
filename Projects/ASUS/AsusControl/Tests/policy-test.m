@@ -18,11 +18,26 @@ int main(void) { @autoreleasepool {
     s[@"BatteryPercent"]=@75;s[@"ACPower"]=@NO;assert(AsusEffectiveProfile(p,s)==0);
     p[@"ManualProfile"]=@3;assert(AsusEffectiveProfile(p,s)==0);
     s[@"ACPower"]=@YES;assert(AsusEffectiveProfile(p,s)==3);
-    p[@"AutoPerformanceOnAC"]=@YES;p[@"ManualProfile"]=@1;
+    // Manual Performance expires after reboot or eligibility loss. Old auto
+    // preferences cannot restore it when power returns.
+    p[@"ManualProfile"]=@2;p[@"AutoPerformanceOnAC"]=@YES;
+    h[@"BootSessionID"]=@"boot-a";h[@"ThermalProfile"]=@2;
+    NSDictionary *session=@{@"FanBootSessionID":@"boot-a"};
+    s[@"ACPower"]=@YES;s[@"BatteryPercent"]=@40;s[@"PerformanceActive"]=@YES;
     assert(AsusEffectiveProfile(p,s)==2);
-    s[@"ACPower"]=@NO;assert(AsusEffectiveProfile(p,s)==0);
-    s[@"ACPower"]=@YES;s[@"BatteryPercent"]=@40;assert(AsusEffectiveProfile(p,s)==0);
-    s[@"BatteryPercent"]=@75;assert(AsusEffectiveProfile(p,s)==2);
+    assert([AsusFanSessionPreferences(p,h,s,session)[@"ManualProfile"]intValue]==2);
+    s[@"BatteryPercent"]=@39.9;
+    NSDictionary *expired=AsusFanSessionPreferences(p,h,s,session);
+    assert([expired[@"ManualProfile"]intValue]==0 && !expired[@"AutoPerformanceOnAC"]);
+    s[@"BatteryPercent"]=@75;
+    assert([AsusFanSessionPreferences(expired,h,s,session)[@"ManualProfile"]intValue]==0);
+    assert([AsusFanSessionPreferences(p,h,s,@{@"FanBootSessionID":@"previous-boot"})[@"ManualProfile"]intValue]==0);
+    assert([AsusFanSessionPreferences(p,h,s,@{})[@"ManualProfile"]intValue]==0);
+    s[@"ACPower"]=@NO;
+    expired=AsusFanSessionPreferences(p,h,s,session);
+    s[@"ACPower"]=@YES;
+    assert([AsusFanSessionPreferences(expired,h,s,session)[@"ManualProfile"]intValue]==0);
+    [s removeObjectForKey:@"PerformanceActive"];
     p=[AsusDefaultPreferences()mutableCopy];p[@"FnManaged"]=@YES;p[@"FnHotkeys"]=@NO;
     assert([action(AsusPolicyActions(p,h,s,@{},1000),@"device")[@"Value"]isEqual:@4]);
     h[@"FnLockHotkeys"]=@NO;
@@ -68,5 +83,5 @@ int main(void) { @autoreleasepool {
     state=[@{@"FnPendingIntent":intent,@"FailedFamilies":@{@"FnIntent":@"The driver rejected the request."}}mutableCopy];
     AsusRecoverFnReadbackState(p,h,state);
     assert(state[@"FailedFamilies"][@"FnIntent"] && !state[@"FnAcceptedIntent"]);
-    puts("PASS: manual/automatic profiles, restrictions, deadlines, strict Fn readback, acknowledgement-only state and error-preserving recovery.");
+    puts("PASS: manual profiles and restart/power resets, restrictions, deadlines, strict Fn readback, acknowledgement-only state and error-preserving recovery.");
 } }

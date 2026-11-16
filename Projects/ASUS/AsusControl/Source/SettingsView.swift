@@ -10,6 +10,9 @@ private final class SettingsModel: ObservableObject {
     @Published var error = false
     @Published var busy = false
     @Published var version = ""
+    @Published var pendingControl = ""
+    @Published var pendingValue: Int?
+    func loading(_ key: String) -> Bool { busy && pendingControl == key }
     weak var actions: AsusPaneActions?
     func flag(_ values: [String: Any], _ key: String) -> Bool { (values[key] as? NSNumber)?.boolValue ?? false }
     func number(_ values: [String: Any], _ key: String) -> Int { (values[key] as? NSNumber)?.intValue ?? 0 }
@@ -34,10 +37,25 @@ private final class SettingsModel: ObservableObject {
         // when the power and battery restrictions are satisfied.
         if onAC != nil { return true }
         let minimum = (hardware["PerformanceMinimumBattery"] as? NSNumber)?.intValue ?? 40
-        return flag(system,"PowerSourceKnown") && (minimum == 0 || flag(system,"BatteryKnown") && number(system,"BatteryPercent") > minimum)
+        return flag(system,"PowerSourceKnown") && (minimum == 0 || flag(system,"BatteryKnown") && ((system["BatteryPercent"] as? NSNumber)?.doubleValue ?? 0) > Double(minimum))
     }
 }
 private func profileName(_ value: Int) -> String { ["Standard","Whisper","Performance","Full Speed"].indices.contains(value) ? ["Standard","Whisper","Performance","Full Speed"][value] : "Unavailable" }
+
+// Use the actual AppKit indeterminate spinner at the same size everywhere.
+private struct LoadingIndicator: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSProgressIndicator {
+        let spinner = NSProgressIndicator()
+        spinner.style = .spinning
+        spinner.controlSize = .small
+        spinner.isIndeterminate = true
+        spinner.isDisplayedWhenStopped = false
+        spinner.startAnimation(nil)
+        return spinner
+    }
+    func updateNSView(_ view: NSProgressIndicator, context: Context) {}
+    static func dismantleNSView(_ view: NSProgressIndicator, coordinator: ()) { view.stopAnimation(nil) }
+}
 
 private struct SettingsScreen: View {
     @ObservedObject var model: SettingsModel
@@ -48,6 +66,15 @@ private struct SettingsScreen: View {
     private var touchpadRecovery: String {
         guard let hotkeys = hardware["FnSelectedHotkeys"] as? NSNumber else { return "Use the touchpad key to turn it back on." }
         return hotkeys.boolValue ? "Press F6 to turn it back on." : "Press Fn + F6 to turn it back on."
+    }
+    private var spinner: some View {
+        LoadingIndicator().frame(width:16,height:16).accessibilityLabel("Applying")
+    }
+    private func controlLabel(_ title: String, key: String) -> some View {
+        HStack(spacing:8) {
+            Text(title).fixedSize(horizontal:false,vertical:true)
+            if model.loading(key) { spinner }
+        }
     }
     var body: some View {
         VStack(spacing: 0) {
@@ -70,6 +97,9 @@ private struct SettingsScreen: View {
                     Text(model.version).font(.caption2).foregroundStyle(.tertiary)
                 }.listRowBackground(Color.clear)
             }.formStyle(.grouped).scrollContentBackground(.hidden)
+                .overlay(alignment:.topTrailing) {
+                    if model.loading("all") { spinner.padding(.top,16).padding(.trailing,20) }
+                }
         }.frame(maxWidth:.infinity,maxHeight:.infinity)
     }
     private var power: some View {
@@ -81,27 +111,25 @@ private struct SettingsScreen: View {
                     profileCard(1,title:"Whisper",symbol:"leaf",detail:"Dynamically minimizes fan speed for the quietest operation.")
                 }.listRowInsets(EdgeInsets(top:0,leading:0,bottom:0,trailing:0)).listRowBackground(Color.clear)
             } header: { Text("Fan Profile") } footer: {
-                Text("Dynamic Performance requires AC power and more than 40% battery. Standard is used when these conditions are not met; your Performance selection resumes when they are met again.")
+                Text("Requires AC power and more than 40% battery.")
                     .fixedSize(horizontal:false,vertical:true)
             }
             Section {
-                Toggle("Full Speed",isOn:Binding(get:{ model.number(hardware,"FanRequestedMode") == 1 },set:{ enabled in
-                    let profile = enabled ? 3 : model.number(hardware,"ThermalProfile")
-                    model.actions?.changeSetting("QuickProfile",value:NSNumber(value:profile))
-                })).disabled(!model.fullSpeedAvailable).opacity(model.fullSpeedAvailable ? 1 : 0.4)
-                Toggle("Automatically set to Performance when plugged in",isOn:model.bool("AutoPerformanceOnAC"))
-                    .disabled(!model.devices || !model.flag(hardware,"ThermalProfileValid"))
+                Toggle(isOn:Binding(get:{ model.number(hardware,"FanRequestedMode") == 1 },set:{ enabled in
+                    model.actions?.changeSetting("FullSpeed",value:NSNumber(value:enabled))
+                })) { controlLabel("Full Speed",key:"FullSpeed") }
+                    .disabled(!model.fullSpeedAvailable).opacity(model.fullSpeedAvailable ? 1 : 0.4)
                 LabeledContent("Active profile",value:model.currentProfile)
                 LabeledContent("Fan speed",value:model.flag(hardware,"FanReadingValid") ? "\(model.number(hardware,"FanRPM")) RPM" : "Unavailable")
             } footer: {
-                Text(model.flag(preferences,"AutoPerformanceOnAC") ?
-                    "Uses Standard on battery. Performance requires more than 40% battery. Selecting a profile turns automatic switching off." :
-                    "Profiles adjust fan speed automatically. Full Speed keeps the fan running at its full-speed setting.")
+                Text("Full Speed overrides the selected profile.")
                     .fixedSize(horizontal:false,vertical:true)
             }
             Section {
-                Toggle("Battery Care",isOn:model.bool("BatteryCare")).disabled(!model.devices || !model.flag(hardware,"BatteryCareAvailable"))
-                Toggle("Full charging for 24 hours",isOn:Binding(get:{ fullCharging },set:{ model.actions?.changeSetting("FullCharge",value:NSNumber(value:$0)) }))
+                Toggle(isOn:model.bool("BatteryCare")) { controlLabel("Battery Care",key:"BatteryCare") }.disabled(!model.devices || !model.flag(hardware,"BatteryCareAvailable"))
+                Toggle(isOn:Binding(get:{ fullCharging },set:{ model.actions?.changeSetting("FullCharge",value:NSNumber(value:$0)) })) {
+                    controlLabel("Full charging for 24 hours",key:"FullCharge")
+                }
                     .disabled(!model.devices || !model.flag(hardware,"BatteryCareAvailable") || !model.flag(preferences,"BatteryCare"))
             } header: { Text("Battery") } footer: {
                 Text(fullCharging ? "Charging to 100% is allowed until \(fullChargeEnd). Battery Care then returns to 80%." : "Battery Care requests an 80% charging limit. Temporarily allow 100% for 24 hours when you need a full charge.")
@@ -128,6 +156,9 @@ private struct SettingsScreen: View {
                 .background(selected ? Color.accentColor.opacity(0.10) : Color.primary.opacity(0.035),in:RoundedRectangle(cornerRadius:12))
                 .overlay(RoundedRectangle(cornerRadius:12).stroke(selected ? Color.accentColor : Color(nsColor:.separatorColor),lineWidth:selected ? 2 : 1))
                 .contentShape(RoundedRectangle(cornerRadius:12))
+                .overlay(alignment:.bottomTrailing) {
+                    if model.loading("QuickProfile") && model.pendingValue == profile { spinner.padding(14) }
+                }
             .environment(\.isEnabled, true)
             .opacity(!model.profileAllowed(profile) && !selected ? 0.4 : 1)
         }.buttonStyle(.plain).disabled(!model.devices || !model.profileAllowed(profile))
@@ -138,10 +169,11 @@ private struct SettingsScreen: View {
     private var input: some View {
         Group {
             Section {
-                Toggle("Touchpad",isOn:Binding(get:{model.flag(hardware,"TrackpadEnabled")},set:{enabled in
+                Toggle(isOn:Binding(get:{model.flag(hardware,"TrackpadEnabled")},set:{enabled in
                     if enabled { model.actions?.setTouchpadEnabled(true) }
                     else { confirmTouchpad = true }
-                })).disabled(!model.devices || !model.flag(hardware,"TrackpadControlAvailable"))
+                })) { controlLabel("Touchpad",key:"Touchpad") }
+                    .disabled(!model.devices || !model.flag(hardware,"TrackpadControlAvailable"))
                 if confirmTouchpad {
                     VStack(alignment:.leading,spacing:8) {
                         Text("Disable the touchpad? \(touchpadRecovery)").foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)
@@ -156,31 +188,34 @@ private struct SettingsScreen: View {
                 Text(touchpadRecovery).fixedSize(horizontal:false,vertical:true)
             }
             Section {
-                Picker("Function keys",selection:Binding(get:{model.flag(preferences,"FnHotkeys")},set:{model.actions?.changeSetting("FnHotkeys",value:NSNumber(value:$0))})) {
+                Picker(selection:Binding(get:{model.flag(preferences,"FnHotkeys")},set:{model.actions?.changeSetting("FnHotkeys",value:NSNumber(value:$0))})) {
                     Text("Printed hotkeys").tag(true)
                     Text("F1–F12").tag(false)
-                }.disabled(!model.devices || !model.flag(hardware,"FnLockAvailable"))
+                } label: { controlLabel("Function keys",key:"FnHotkeys") }
+                    .disabled(!model.devices || !model.flag(hardware,"FnLockAvailable"))
             } footer: {
                 Text("Hold Fn to use the other function-key behavior.").fixedSize(horizontal:false,vertical:true)
             }
             Section {
-                Picker("Turn off when idle",selection:model.integer("BacklightSleepMode")) {
+                Picker(selection:model.integer("BacklightSleepMode")) {
                     Text("Never").tag(0)
                     Text("On battery and power adapter").tag(1)
                     Text("On battery only").tag(2)
-                }.disabled(!model.devices || !model.flag(hardware,"KeyboardControlAvailable"))
+                } label: { controlLabel("Turn off when idle",key:"BacklightSleepMode") }
+                    .disabled(!model.devices || !model.flag(hardware,"KeyboardControlAvailable"))
                 if model.number(preferences,"BacklightSleepMode") != 0 {
-                    Picker("After",selection:model.integer("BacklightTimeout")) {
+                    Picker(selection:model.integer("BacklightTimeout")) {
                         Text("30 seconds").tag(30)
                         Text("1 minute").tag(60)
                         Text("3 minutes").tag(180)
                         Text("5 minutes").tag(300)
                         Text("10 minutes").tag(600)
                         Text("15 minutes").tag(900)
-                    }.disabled(!model.devices || !model.flag(hardware,"KeyboardControlAvailable"))
+                    } label: { controlLabel("After",key:"BacklightTimeout") }
+                        .disabled(!model.devices || !model.flag(hardware,"KeyboardControlAvailable"))
                 }
             } header: { Text("Keyboard Backlight") } footer: {
-                Text("The keyboard light returns to its previous level when you resume using the computer. Brightness is adjusted with the keyboard keys.").fixedSize(horizontal:false,vertical:true)
+                Text("The keyboard light returns to its previous level when you resume using the computer.").fixedSize(horizontal:false,vertical:true)
             }
         }
     }
@@ -209,10 +244,11 @@ private final class SettingsHost: NSHostingView<SettingsScreen> {
         view.frame=NSRect(x:0,y:0,width:660,height:760)
         return view
     }
-    @objc func update(hardware:NSDictionary,system:NSDictionary,preferences:NSDictionary,message:String,error:Bool,busy:Bool,version:String) {
+    @objc func update(hardware:NSDictionary,system:NSDictionary,preferences:NSDictionary,message:String,error:Bool,busy:Bool,version:String,pendingControl:String,pendingValue:NSNumber?) {
         model.hardware=hardware as? [String:Any] ?? [:]
         model.system=system as? [String:Any] ?? [:]
         model.preferences=preferences as? [String:Any] ?? [:]
         model.message=message; model.error=error; model.busy=busy; model.version=version
+        model.pendingControl=pendingControl; model.pendingValue=pendingValue?.intValue
     }
 }

@@ -15,3 +15,4 @@ BOOL AsusFnReadbackReliable(NSDictionary *hardware);
 void AsusRecoverFnReadbackState(NSDictionary *preferences, NSDictionary *hardware, NSMutableDictionary *state);
 NSString *AsusPolicyCompletionResult(NSDictionary *preferences, NSDictionary *hardware, NSDictionary *state);
 NSDictionary *AsusFnStatusForUI(NSDictionary *preferences, NSDictionary *hardware, NSDictionary *state);
+NSDictionary *AsusFanSessionPreferences(NSDictionary *preferences, NSDictionary *hardware, NSDictionary *system, NSDictionary *state);
