@@ -35,7 +35,7 @@ static BOOL applyOne(NSDictionary *p,NSString *family,BOOL foreground,NSDictiona
     if(fan && (![hardware[@"ThermalProfileValid"] boolValue] || ![system[@"PowerSourceKnown"] boolValue])) unavailable=@"The current fan profile or power source is unavailable.";
     if(([family isEqual:@"all"] || [family isEqual:@"FnIntent"]) && [p[@"FnManaged"] boolValue] && ![hardware[@"FnLockAvailable"] boolValue]) unavailable=@"Function-key mode is unavailable with the current firmware.";
     if(fan && foreground && [family isEqual:@"ThermalIntent"] && AsusEffectiveProfile(p,system)!=[p[@"ManualProfile"] integerValue])
-        unavailable=@"This profile is unavailable on the power source macOS currently reports. Connect the power adapter; Performance also requires more than 40% battery.";
+        unavailable=@"This profile is unavailable on the power source macOS currently reports. Full Speed and Performance require AC power and more than 40% battery.";
     if(unavailable) { if(error)*error=[NSError errorWithDomain:@"com.samuelnotfound.AsusControl.Policy" code:4 userInfo:@{NSLocalizedDescriptionKey:unavailable}];return NO; }
     NSMutableDictionary *decisionState=[state mutableCopy];
     // A deliberate Fn selection/retry must reach firmware even if its status

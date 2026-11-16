@@ -25,6 +25,12 @@ int main(void) { @autoreleasepool {
     s[@"BatteryPercent"]=@75;s[@"ACPower"]=@NO;assert(AsusEffectiveProfile(p,s)==0);
     p[@"ManualProfile"]=@3;assert(AsusEffectiveProfile(p,s)==0);
     s[@"ACPower"]=@YES;assert(AsusEffectiveProfile(p,s)==3);
+    s[@"BatteryPercent"]=@40;assert(AsusEffectiveProfile(p,s)==0);
+    s[@"BatteryPercent"]=@39;assert(AsusEffectiveProfile(p,s)==0);
+    s[@"BatteryPercent"]=@40.1;assert(AsusEffectiveProfile(p,s)==3);
+    s[@"BatteryKnown"]=@NO;assert(AsusEffectiveProfile(p,s)==0);
+    s[@"BatteryKnown"]=@YES;s[@"PowerSourceKnown"]=@NO;assert(AsusEffectiveProfile(p,s)==0);
+    s[@"PowerSourceKnown"]=@YES;s[@"BatteryPercent"]=@75;
     // Manual Performance expires after reboot or eligibility loss. Old auto
     // preferences cannot restore it when power returns.
     p[@"ManualProfile"]=@2;p[@"AutoPerformanceOnAC"]=@YES;

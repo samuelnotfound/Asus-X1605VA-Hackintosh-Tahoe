@@ -14,7 +14,7 @@ manage your touchpad and keyboard backlight from one native preference pane.
 | Control | What it does |
 | --- | --- |
 | **Performance · Standard · Whisper** | Choose how firmware balances cooling and fan noise. |
-| **Full Speed** | Override the selected profile while connected to AC power. |
+| **Full Speed** | Override the selected profile on AC power with more than 40% battery. |
 | **Live fan speed** | View the current RPM. |
 | **Touchpad** | Enable or disable it, with a shortcut reminder to turn it back on. |
 | **Function keys** | Choose printed hotkeys or F1–F12 as the primary action. |

@@ -1,7 +1,7 @@
 # ASUS Control continuation — 2026-11-15
 
 Public repository `samuelnotfound/Asus-X1605VA-Hackintosh-Tahoe`.
-Project `Projects/ASUS/AsusControl`, pane/CLI/agent version in VERSION (now1.2.2). Keep software names
+Project `Projects/ASUS/AsusControl`, pane/CLI/agent version in VERSION (now1.2.3). Keep software names
 broad. Only X1605VA BIOS305 wiring is currently profiled. Do not publish private
 diagnostics, identities, raw ACPI tables, ignored backups or transcripts.
 
@@ -13,7 +13,7 @@ diagnostics, identities, raw ACPI tables, ignored backups or transcripts.
   text: Dynamic Performance maximizes cooling for demanding tasks, Standard
   dynamically selects fan speed for everyday tasks, Whisper minimizes noise.
 - Remove duplicate inner ASUS Control heading and Current function-key mode row.
-- Full Speed card disabled/gray without AC. Active profile remains
+- Full Speed card disabled/gray unless on AC with more than40% battery. Active profile remains
   explicit/legible independently of whether a profile is available to select.
 - No profile-switching UI, custom AC/battery rules or Low Power Mode override.
 - Latest correction supersedes earlier restore/auto rules: remove the
@@ -261,3 +261,11 @@ requires more than40% battery. Removed the duplicate AC sentence from the Full
 Speed card. Full Speed description uses the user’s reference: “Run at full
 speed and enjoy the ultimate performance experience.” No eligibility, firmware
 or policy changes.
+
+## 1.2.3 shared fan-mode requirement
+
+User now explicitly requests: “Full Speed and Performance modes require AC
+power and more than 40% battery.” This supersedes the AC-only Full Speed rule.
+Full Speed UI and shared userspace policy require known AC and known battery
+above40%; unknown or <=40% falls back to Standard. Existing Performance
+activation/active-state behavior stays unchanged. No driver or EFI changes.

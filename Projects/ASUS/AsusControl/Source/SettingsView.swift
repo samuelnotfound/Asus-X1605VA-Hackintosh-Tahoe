@@ -29,7 +29,7 @@ private final class SettingsModel: ObservableObject {
     }
     func profileAllowed(_ profile: Int, onAC: Bool? = nil) -> Bool {
         let ac = onAC ?? flag(system,"ACPower")
-        if profile == 3 { return flag(system,"PowerSourceKnown") && ac }
+        if profile == 3 { return flag(system,"PowerSourceKnown") && ac && flag(system,"BatteryKnown") && ((system["BatteryPercent"] as? NSNumber)?.doubleValue ?? 0) > 40 }
         if profile != 2 { return true }
         if !ac && !flag(hardware,"PerformanceOnBattery") { return false }
         // Configuring an AC policy is allowed on battery; it will apply only
@@ -115,7 +115,7 @@ private struct SettingsScreen: View {
                     }
                 }.listRowInsets(EdgeInsets(top:0,leading:0,bottom:0,trailing:0)).listRowBackground(Color.clear)
             } header: { Text("Fan Profile") } footer: {
-                Text("Full Speed and Performance modes require: AC power. Performance also requires more than 40% battery.")
+                Text("Full Speed and Performance modes require AC power and more than 40% battery.")
                     .fixedSize(horizontal:false,vertical:true)
             }
             Section {

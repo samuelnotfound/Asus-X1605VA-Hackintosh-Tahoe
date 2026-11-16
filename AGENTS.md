@@ -12,7 +12,7 @@ Read `docs/DEVELOPMENT-CONTINUATION.md` before changing this repository.
   controls, following the macOS Appearance/Desktop & Dock references. Avoid
   duplicate fan controls; fit the host size and use one scrolling form. Restore
   a 2×2 card grid: Full Speed/Performance, then Standard/Whisper.
-  Full Speed replaces its separate switch; disable it without AC. One pane, no tabs, dashboard,
+  Full Speed replaces its separate switch; it requires AC and more than40% battery. One pane, no tabs, dashboard,
   profile-switching menu, per-source profile pickers or Low Power Mode rules. The
   former AutoPerformanceOnAC switch is removed and its saved flag ignored.
   Performance requires AC and>40%; return to Standard on restart, AC loss or
@@ -60,8 +60,8 @@ Read `docs/DEVELOPMENT-CONTINUATION.md` before changing this repository.
   pane/CLI/helper source of truth; upstream AsusSMC version remains unchanged.
 - Loading indicators belong on the trailing/right side of switches and menus;
   fan-card indicators remain lower-right. Requirement note starts with
-  “Full Speed and Performance modes require:”; AC applies to both,
-  more than40% battery applies only to Performance.
+  “Full Speed and Performance modes require AC power and more than 40% battery.”
+  Both eligibility checks must match this note.
 - Keep the original AsusSMC identity/license. Export driver source changes from
   its separate checkout against pinned upstream; don't require a published fork.
 - Queue hardware operations on the driver workloop. Property handlers only

@@ -16,7 +16,7 @@ NSInteger AsusEffectiveProfile(NSDictionary *p, NSDictionary *system) {
     if (profile < 0 || profile > 3) return 0;
     // This is a capability of the current hardware profile, not every ASUS.
     if (!ac && profile == 2 && ![system[@"PerformanceOnBattery"] boolValue]) return 0;
-    if (!ac && profile == 3 && ![system[@"FullSpeedOnBattery"] boolValue]) return 0;
+    if (profile == 3 && (!ac || ![system[@"PowerSourceKnown"] boolValue] || ![system[@"BatteryKnown"] boolValue] || [system[@"BatteryPercent"] doubleValue] <= 40)) return 0;
     NSInteger minimum = system[@"PerformanceMinimumBattery"] ? [system[@"PerformanceMinimumBattery"] integerValue] : 40;
     if (profile == 2 && minimum > 0) {
         BOOL active = [system[@"PerformanceActive"] boolValue];
