@@ -155,8 +155,8 @@ reads, not charge enable setters. No verified immediate ASUS inhibit interface
 has been found. No fake SMC charge-control key or arbitrary-register API added.
 
 Latest read-only snapshot was71% on battery, negative current, no AC attached;
-it cannot verify behavior while charging past80%. A question is pending whether
-AlDente itself has worked on this laptop or was only a behavior reference. No
+it cannot verify behavior while charging past80%. User confirmed AlDente is only a behavior reference; it has not been shown
+to inhibit charging on this laptop. No
 normal-user firmware command was run from the sandbox, and the earlier denied
 write was not retried through another route. Next hardware work needs a proven
 ASUS command path and actual charging-current observations, not more UI polish.
@@ -206,3 +206,9 @@ Fn behavior still needs investigation/testing through the normal user session.
 Tests use pure policy/fake driver and offscreen windows, never live writes.
 Compilation/fixtures do not prove boot, charging, fan acoustics, sleep/wake or
 physical input behavior. Keep source publication separate from live deployment.
+
+Copyright note: no AlDente code, UI artwork or branding was copied. Its current
+repository LICENSE is an evaluation agreement, not blanket reuse permission.
+Implement ASUS charging control independently; any later source reuse needs
+license-specific review and required notices. The feature idea is a reference,
+not permission to copy its expression.
