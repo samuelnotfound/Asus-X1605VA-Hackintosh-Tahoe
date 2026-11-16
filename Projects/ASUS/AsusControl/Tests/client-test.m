@@ -30,6 +30,8 @@ int main(void) {
         assert(!AsusControlSendCommand(NO, 0, &error) && error.code == 1);
         assert(!AsusControlSendCommand(NO, 6, &error) && error.code == 1);
         assert(!AsusControlSendDeviceCommand(0, &error) && error.code == 1);
+        assert(!AsusControlSendDeviceCommand(1, &error) && error.code == 1);
+        assert(!AsusControlSendDeviceCommand(2, &error) && error.code == 1);
         assert(!AsusControlSendDeviceCommand(12, &error) && error.code == 1);
         if (geteuid() != 0) assert(!AsusControlSendCommand(NO, 1, &error) && error.code == 2);
         puts("PASS: legacy/normalized Fn mapping, profile isolation, completion IDs, invalid values and command boundaries.");

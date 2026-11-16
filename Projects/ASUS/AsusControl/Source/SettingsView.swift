@@ -70,9 +70,9 @@ private struct SettingsScreen: View {
     private var spinner: some View {
         LoadingIndicator().frame(width:16,height:16).accessibilityLabel("Applying")
     }
-    private func controlLabel(_ title: String, key: String) -> some View {
+    private func loadingRow<Content: View>(_ key: String, @ViewBuilder content: () -> Content) -> some View {
         HStack(spacing:8) {
-            Text(title).fixedSize(horizontal:false,vertical:true)
+            content().frame(maxWidth:.infinity,alignment:.leading)
             if model.loading(key) { spinner }
         }
     }
@@ -111,28 +111,19 @@ private struct SettingsScreen: View {
                     profileCard(1,title:"Whisper",symbol:"leaf",detail:"Dynamically minimizes fan speed for the quietest operation.")
                 }.listRowInsets(EdgeInsets(top:0,leading:0,bottom:0,trailing:0)).listRowBackground(Color.clear)
             } header: { Text("Fan Profile") } footer: {
-                Text("Requires AC power and more than 40% battery.")
+                Text("Performance mode requires: AC power and more than 40% battery.")
                     .fixedSize(horizontal:false,vertical:true)
             }
             Section {
-                Toggle(isOn:Binding(get:{ model.number(hardware,"FanRequestedMode") == 1 },set:{ enabled in
-                    model.actions?.changeSetting("FullSpeed",value:NSNumber(value:enabled))
-                })) { controlLabel("Full Speed",key:"FullSpeed") }
-                    .disabled(!model.fullSpeedAvailable).opacity(model.fullSpeedAvailable ? 1 : 0.4)
+                loadingRow("FullSpeed") {
+                    Toggle("Full Speed",isOn:Binding(get:{ model.number(hardware,"FanRequestedMode") == 1 },set:{ enabled in
+                        model.actions?.changeSetting("FullSpeed",value:NSNumber(value:enabled))
+                    })).disabled(!model.fullSpeedAvailable).opacity(model.fullSpeedAvailable ? 1 : 0.4)
+                }
                 LabeledContent("Active profile",value:model.currentProfile)
                 LabeledContent("Fan speed",value:model.flag(hardware,"FanReadingValid") ? "\(model.number(hardware,"FanRPM")) RPM" : "Unavailable")
             } footer: {
                 Text("Full Speed overrides the selected profile.")
-                    .fixedSize(horizontal:false,vertical:true)
-            }
-            Section {
-                Toggle(isOn:model.bool("BatteryCare")) { controlLabel("Battery Care",key:"BatteryCare") }.disabled(!model.devices || !model.flag(hardware,"BatteryCareAvailable"))
-                Toggle(isOn:Binding(get:{ fullCharging },set:{ model.actions?.changeSetting("FullCharge",value:NSNumber(value:$0)) })) {
-                    controlLabel("Full charging for 24 hours",key:"FullCharge")
-                }
-                    .disabled(!model.devices || !model.flag(hardware,"BatteryCareAvailable") || !model.flag(preferences,"BatteryCare"))
-            } header: { Text("Battery") } footer: {
-                Text(fullCharging ? "Charging to 100% is allowed until \(fullChargeEnd). Battery Care then returns to 80%." : "Battery Care requests an 80% charging limit. Temporarily allow 100% for 24 hours when you need a full charge.")
                     .fixedSize(horizontal:false,vertical:true)
             }
         }
@@ -164,16 +155,15 @@ private struct SettingsScreen: View {
         }.buttonStyle(.plain).disabled(!model.devices || !model.profileAllowed(profile))
             .accessibilityLabel("\(title) fan profile").accessibilityValue(selected ? "Active" : "Not active")
     }
-    private var fullCharging: Bool { model.flag(preferences,"BatteryCare") && ((preferences["FullChargeUntil"] as? NSNumber)?.doubleValue ?? 0) > Date().timeIntervalSince1970 }
-    private var fullChargeEnd: String { Date(timeIntervalSince1970:(preferences["FullChargeUntil"] as? NSNumber)?.doubleValue ?? 0).formatted(date:.abbreviated,time:.shortened) }
     private var input: some View {
         Group {
             Section {
-                Toggle(isOn:Binding(get:{model.flag(hardware,"TrackpadEnabled")},set:{enabled in
-                    if enabled { model.actions?.setTouchpadEnabled(true) }
-                    else { confirmTouchpad = true }
-                })) { controlLabel("Touchpad",key:"Touchpad") }
-                    .disabled(!model.devices || !model.flag(hardware,"TrackpadControlAvailable"))
+                loadingRow("Touchpad") {
+                    Toggle("Touchpad",isOn:Binding(get:{model.flag(hardware,"TrackpadEnabled")},set:{enabled in
+                        if enabled { model.actions?.setTouchpadEnabled(true) }
+                        else { confirmTouchpad = true }
+                    })).disabled(!model.devices || !model.flag(hardware,"TrackpadControlAvailable"))
+                }
                 if confirmTouchpad {
                     VStack(alignment:.leading,spacing:8) {
                         Text("Disable the touchpad? \(touchpadRecovery)").foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)
@@ -188,31 +178,34 @@ private struct SettingsScreen: View {
                 Text(touchpadRecovery).fixedSize(horizontal:false,vertical:true)
             }
             Section {
-                Picker(selection:Binding(get:{model.flag(preferences,"FnHotkeys")},set:{model.actions?.changeSetting("FnHotkeys",value:NSNumber(value:$0))})) {
-                    Text("Printed hotkeys").tag(true)
-                    Text("F1–F12").tag(false)
-                } label: { controlLabel("Function keys",key:"FnHotkeys") }
-                    .disabled(!model.devices || !model.flag(hardware,"FnLockAvailable"))
+                loadingRow("FnHotkeys") {
+                    Picker("Function keys",selection:Binding(get:{model.flag(preferences,"FnHotkeys")},set:{model.actions?.changeSetting("FnHotkeys",value:NSNumber(value:$0))})) {
+                        Text("Printed hotkeys").tag(true)
+                        Text("F1–F12").tag(false)
+                    }.disabled(!model.devices || !model.flag(hardware,"FnLockAvailable"))
+                }
             } footer: {
                 Text("Hold Fn to use the other function-key behavior.").fixedSize(horizontal:false,vertical:true)
             }
             Section {
-                Picker(selection:model.integer("BacklightSleepMode")) {
-                    Text("Never").tag(0)
-                    Text("On battery and power adapter").tag(1)
-                    Text("On battery only").tag(2)
-                } label: { controlLabel("Turn off when idle",key:"BacklightSleepMode") }
-                    .disabled(!model.devices || !model.flag(hardware,"KeyboardControlAvailable"))
+                loadingRow("BacklightSleepMode") {
+                    Picker("Turn off when idle",selection:model.integer("BacklightSleepMode")) {
+                        Text("Never").tag(0)
+                        Text("On battery and power adapter").tag(1)
+                        Text("On battery only").tag(2)
+                    }.disabled(!model.devices || !model.flag(hardware,"KeyboardControlAvailable"))
+                }
                 if model.number(preferences,"BacklightSleepMode") != 0 {
-                    Picker(selection:model.integer("BacklightTimeout")) {
-                        Text("30 seconds").tag(30)
-                        Text("1 minute").tag(60)
-                        Text("3 minutes").tag(180)
-                        Text("5 minutes").tag(300)
-                        Text("10 minutes").tag(600)
-                        Text("15 minutes").tag(900)
-                    } label: { controlLabel("After",key:"BacklightTimeout") }
-                        .disabled(!model.devices || !model.flag(hardware,"KeyboardControlAvailable"))
+                    loadingRow("BacklightTimeout") {
+                        Picker("After",selection:model.integer("BacklightTimeout")) {
+                            Text("30 seconds").tag(30)
+                            Text("1 minute").tag(60)
+                            Text("3 minutes").tag(180)
+                            Text("5 minutes").tag(300)
+                            Text("10 minutes").tag(600)
+                            Text("15 minutes").tag(900)
+                        }.disabled(!model.devices || !model.flag(hardware,"KeyboardControlAvailable"))
+                    }
                 }
             } header: { Text("Keyboard Backlight") } footer: {
                 Text("The keyboard light returns to its previous level when you resume using the computer.").fixedSize(horizontal:false,vertical:true)

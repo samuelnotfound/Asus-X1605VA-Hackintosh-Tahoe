@@ -18,7 +18,7 @@ BOOL AsusControlSendDeviceCommand(uint32_t value,NSError **error) {
         return NO;
     }
     if(value>=7 && value<=9){hardware[@"ThermalProfile"]=@(value-7);hardware[@"FanRequestedMode"]=@0;}
-    if(value<=2)hardware[@"ChargeLimitRequested"]=@(value==1?80:100);
+    assert(value>=3); // Retired charging commands must never reach the sender.
     if((value==3 || value==4) && !ignoreFn)hardware[@"FnLockHotkeys"]=@(value==3);
     return YES;
 }
@@ -94,18 +94,13 @@ int main(void) { @autoreleasepool {
     assert(!state[@"FailedFamilies"][@"ThermalIntent"] && [p[@"ManualProfile"]isEqual:@0]);
     count=commands.count;systemState[@"ACPower"]=@YES;
     assert(background(p,environment,state,&error) && commands.count==count);
-    // Charge requests are adopted within a session and refreshed after source
-    // transitions or driver replacement, even when an old cache says 80.
+    // A legacy charging-only setup cleans up without a driver or any writes.
     p[@"FanManaged"]=@NO;p[@"FnManaged"]=@NO;p[@"BatteryManaged"]=@YES;
-    hardware[@"DriverSessionID"]=@"boot-a:100";systemState[@"ACPower"]=@NO;[commands removeAllObjects];
+    state[@"ChargeIntent"]=@"charge:80";state[@"FailedFamilies"]=@{@"ChargeIntent":@"Old charging error"};
+    state[@"Error"]=@"Old charging error";hardware[@"DeviceControlAllowed"]=@NO;[commands removeAllObjects];
     assert(background(p,environment,state,&error));
-    assert(background(p,environment,state,&error));
-    assert(([commands isEqual:@[@1]]));
-    systemState[@"ACPower"]=@YES;
-    assert(background(p,environment,state,&error));
-    hardware[@"DriverSessionID"]=@"boot-b:100";
-    assert(background(p,environment,state,&error));
-    assert(([commands isEqual:@[@1,@1,@1]]));
+    assert(commands.count==0 && !state[@"ChargeIntent"] && !state[@"Error"] && !p[@"BatteryManaged"]);
+    hardware[@"DeviceControlAllowed"]=@YES;hardware[@"DriverSessionID"]=@"boot-b:100";
     // Deliberate selections always send once, even when mirror + intent match;
     // background reconciliation must then stay quiet.
     p[@"BatteryManaged"]=@NO;p[@"FnManaged"]=@YES;p[@"FnHotkeys"]=@YES;

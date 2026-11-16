@@ -27,7 +27,7 @@ NSDictionary *AsusReadPreferences(void) {
     [preferences addEntriesFromDictionary:saved];
     if (!saved[@"ManualProfile"] && saved[@"ACProfile"]) preferences[@"ManualProfile"] = saved[@"ACProfile"];
     // Retired switching rules must not override the three direct profile cards.
-    [preferences removeObjectsForKeys:@[@"SplitProfiles",@"FollowLowPower",@"ACProfile",@"BatteryProfile",@"AutoPerformanceOnAC"]];
+    [preferences removeObjectsForKeys:@[@"SplitProfiles",@"FollowLowPower",@"ACProfile",@"BatteryProfile",@"AutoPerformanceOnAC",@"BatteryManaged",@"BatteryCare",@"FullChargeUntil"]];
     return preferences;
 }
 BOOL AsusWritePreferences(NSDictionary *preferences, NSError **error) { return writeJSON(@"settings.json", preferences, error); }

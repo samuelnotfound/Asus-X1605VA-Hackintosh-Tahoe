@@ -4,7 +4,7 @@ Read `docs/DEVELOPMENT-CONTINUATION.md` before changing this repository.
 
 - This is the current public Tahoe repository. Never copy private diagnostics,
   credentials, identity values, EFI backups or chat transcripts here.
-- Active settings project: `Projects/ASUS/AsusControl`, version 1.1.8,
+- Active settings project: `Projects/ASUS/AsusControl`, version is in VERSION,
   displayed as ASUS Control. Keep it separate from deprecated Assistant code.
 - Use broad software names; board names belong in explicit hardware profiles
   and compatibility notes. Only X1605VA BIOS 305 is currently profiled.
@@ -18,9 +18,9 @@ Read `docs/DEVELOPMENT-CONTINUATION.md` before changing this repository.
   below40%, retiring the saved selection. Never restore it just on reconnect.
   No requested
   charging-limit row. No brightness slider, microphone or screen brightness.
-- Current scope: fan monitoring/modes, battery care/24h full charge,
+- Current scope: fan monitoring/modes,
   direct profiles, touchpad, Fn mode and backlight idle timeout. Preserve physical four-step keyboard-light cycling.
-- Pane, utility and optional login agent share VERSION (1.1.8). Keep AsusSMC's
+- Pane, utility and optional login agent share VERSION. Keep AsusSMC's
   upstream version1.4.1 unchanged. Added settings are API2 / feature revision4.
   Cached DSDT wiring detection replaces boot-argument requirements; no model
   detection based on spoofed SMBIOS. No new firmware discovery at boot.
@@ -50,8 +50,16 @@ Read `docs/DEVELOPMENT-CONTINUATION.md` before changing this repository.
   footers. Touchpad recovery hints use the last accepted mode on this profile,
   reliable readback elsewhere: F6 printed, Fn+F6 F1–F12. Keep inline/error hints
   consistent and preserve the firmware mirror separately in diagnostics.
-- Battery Care requests must be refreshed on driver/power-source transitions.
-  Cached acknowledgement does not prove charging stops; user observed >80%.
+- Battery Care/24h full charging are removed. Drop legacy preferences and
+  charging intents/errors; no app, CLI or agent charging writes. Retain legacy
+  kernel endpoints for older clients without exposing them as current features.
+- Keep READMEs concise and user-facing: features, requirements, build/install,
+  removal and links. Put implementation details in the developer guide. No
+  reported/tested-by narratives or repeated app release numbers. VERSION is the
+  pane/CLI/helper source of truth; upstream AsusSMC version remains unchanged.
+- Loading indicators belong on the trailing/right side of switches and menus;
+  fan-card indicators remain lower-right. Requirement note starts with
+  “Performance mode requires:”.
 - Keep the original AsusSMC identity/license. Export driver source changes from
   its separate checkout against pinned upstream; don't require a published fork.
 - Queue hardware operations on the driver workloop. Property handlers only

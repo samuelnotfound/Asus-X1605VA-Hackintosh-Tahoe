@@ -7,8 +7,7 @@ typedef BOOL (^AsusPolicySender)(BOOL keyboard, uint32_t value, NSError **error)
 typedef NSDictionary *(^AsusPolicyReader)(NSError **error);
 BOOL AsusExecutePolicyActions(NSArray<NSDictionary *> *actions, NSMutableDictionary *state, AsusPolicySender sender, AsusPolicyReader reader, NSError **error);
 
-// Also used to recover a failed charging request after a driver/power transition.
-NSString *AsusChargePolicyContext(NSDictionary *preferences, NSDictionary *hardware, NSDictionary *system, NSTimeInterval now);
+void AsusRetireChargingState(NSMutableDictionary *state);
 NSString *AsusFnPolicyContext(NSDictionary *preferences, NSDictionary *hardware);
 
 BOOL AsusFnReadbackReliable(NSDictionary *hardware);

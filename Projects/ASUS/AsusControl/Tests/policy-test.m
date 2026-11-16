@@ -6,11 +6,18 @@ int main(void) { @autoreleasepool {
     NSMutableDictionary *h=[@{@"DeviceControlAllowed":@YES,@"BatteryCareAvailable":@YES,@"ThermalProfileValid":@YES,@"ThermalProfile":@0,
         @"FanRequestedMode":@0,@"FnLockAvailable":@YES,@"FnLockHotkeys":@YES,@"KeyboardReadingValid":@YES,@"KeyboardControlAvailable":@YES,@"KeyboardPercent":@67}mutableCopy];
     NSMutableDictionary *s=[@{@"PowerSourceKnown":@YES,@"ACPower":@YES,@"BatteryKnown":@YES,@"BatteryPercent":@75,@"IdleSeconds":@0}mutableCopy];
-    assert(!AsusNeedsAgent(p));p[@"BatteryManaged"]=@YES;assert(AsusNeedsAgent(p));
-    assert([action(AsusPolicyActions(p,h,s,@{},1000),@"device")[@"Value"]isEqual:@1]);
-    p[@"FullChargeUntil"]=@87400;
-    assert([action(AsusPolicyActions(p,h,s,@{},1000),@"device")[@"Value"]isEqual:@2]);
-    assert([action(AsusPolicyActions(p,h,s,@{},87400),@"device")[@"Value"]isEqual:@1]);
+    assert(!AsusNeedsAgent(p));
+    p[@"BatteryManaged"]=@YES;p[@"BatteryCare"]=@YES;p[@"FullChargeUntil"]=@87400;
+    assert(!AsusNeedsAgent(p));
+    assert(AsusPolicyActions(p,h,s,@{},1000).count==0);
+    assert(AsusPolicyActions(p,h,s,@{},87400).count==0);
+    NSDictionary *retired=AsusFanSessionPreferences(p,h,s,@{});
+    assert(!retired[@"BatteryManaged"] && !retired[@"BatteryCare"] && !retired[@"FullChargeUntil"]);
+    NSMutableDictionary *retiredState=[@{@"ChargeIntent":@"charge:80",@"FailedFamilies":@{@"ChargeIntent":@"Old charging failure",@"FnIntent":@"Real Fn failure"},
+        @"FailedFamilyContexts":@{@"ChargeIntent":@"old-context"},@"Error":@"Old charging failure"}mutableCopy];
+    AsusRetireChargingState(retiredState);
+    assert(!retiredState[@"ChargeIntent"] && !retiredState[@"FailedFamilies"][@"ChargeIntent"] && !retiredState[@"FailedFamilyContexts"][@"ChargeIntent"]);
+    assert([retiredState[@"Error"]isEqual:@"Real Fn failure"] && retiredState[@"FailedFamilies"][@"FnIntent"]);
     p=[AsusDefaultPreferences()mutableCopy];p[@"FanManaged"]=@YES;p[@"ManualProfile"]=@2;
     assert(AsusEffectiveProfile(p,s)==2);
     assert([action(AsusPolicyActions(p,h,s,@{},1000),@"device")[@"Value"]isEqual:@9]);
@@ -76,12 +83,12 @@ int main(void) { @autoreleasepool {
     h[@"FnLockReadbackReliable"]=@NO;
     NSString *intent=AsusFnPolicyContext(p,h);
     NSString *mismatch=@"Firmware acknowledged the function-key mode, but readback did not confirm it. Choose Try Again to reapply it.";
-    state=[@{@"FnPendingIntent":intent,@"FailedFamilies":@{@"FnIntent":mismatch,@"ChargeIntent":@"Charge rejected"},@"Error":mismatch}mutableCopy];
+    state=[@{@"FnPendingIntent":intent,@"FailedFamilies":@{@"FnIntent":mismatch,@"ThermalIntent":@"Fan rejected"},@"Error":mismatch}mutableCopy];
     AsusRecoverFnReadbackState(p,h,state);
     assert([state[@"FnAcceptedIntent"]isEqual:intent] && !state[@"FailedFamilies"][@"FnIntent"]);
-    assert([state[@"FailedFamilies"][@"ChargeIntent"]isEqual:@"Charge rejected"] && [state[@"Error"]isEqual:@"Charge rejected"]);
+    assert([state[@"FailedFamilies"][@"ThermalIntent"]isEqual:@"Fan rejected"] && [state[@"Error"]isEqual:@"Fan rejected"]);
     state=[@{@"FnPendingIntent":intent,@"FailedFamilies":@{@"FnIntent":@"The driver rejected the request."}}mutableCopy];
     AsusRecoverFnReadbackState(p,h,state);
     assert(state[@"FailedFamilies"][@"FnIntent"] && !state[@"FnAcceptedIntent"]);
-    puts("PASS: manual profiles and restart/power resets, restrictions, deadlines, strict Fn readback, acknowledgement-only state and error-preserving recovery.");
+    puts("PASS: manual profiles and restart/power resets, restrictions, charging retirement, strict Fn readback, acknowledgement-only state and error-preserving recovery.");
 } }

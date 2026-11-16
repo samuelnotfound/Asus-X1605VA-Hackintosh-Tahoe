@@ -88,7 +88,6 @@ NSDictionary *AsusControlReadStatus(void) {
         @"AsusControlAPIVersion", @"AsusControlHardwareProfile", @"DeviceControlAllowed",
         @"AsusControlRevision", @"AsusControlAutoDetected", @"FnLockRaw", @"FnLockWriteAcknowledged", @"FnLockRequestedHotkeys",
         @"FnLockSemanticsVersion", @"FnLockInverted", @"FnLockReadbackReliable",
-        @"BatteryCareAvailable", @"ChargeLimitRequested", @"BatteryConservativeMode",
         @"FnLockAvailable", @"FnLockHotkeys", @"TrackpadControlAvailable", @"TrackpadReadingValid", @"TrackpadEnabled",
         @"PerformanceOnBattery", @"PerformanceMinimumBattery", @"FullSpeedOnBattery"];
     for (NSString *key in keys) if (values[key]) status[key] = values[key];
@@ -97,7 +96,7 @@ NSDictionary *AsusControlReadStatus(void) {
 }
 
 static BOOL sendCommand(BOOL keyboard, BOOL refresh, BOOL device, uint32_t value, NSError **error) {
-    if (device ? value < 1 || value > 11 : refresh ? value != 1 : (keyboard && value > 100) || (!keyboard && (value < 1 || value > 5)))
+    if (device ? value < 3 || value > 11 : refresh ? value != 1 : (keyboard && value > 100) || (!keyboard && (value < 1 || value > 5)))
         return fail(error, @"Invalid control value.", 1);
     if (!keyboard && !refresh && !device && geteuid() != 0)
         return fail(error, @"Administrator authorization is required for fan settings.", 2);

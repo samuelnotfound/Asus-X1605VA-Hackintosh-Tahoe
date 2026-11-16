@@ -1,7 +1,7 @@
 # ASUS Control continuation — 2026-11-15
 
 Public repository `samuelnotfound/Asus-X1605VA-Hackintosh-Tahoe`.
-Project `Projects/ASUS/AsusControl`, pane/CLI/agent1.1.8. Keep software names
+Project `Projects/ASUS/AsusControl`, pane/CLI/agent version in VERSION (now1.2.0). Keep software names
 broad. Only X1605VA BIOS305 wiring is currently profiled. Do not publish private
 diagnostics, identities, raw ACPI tables, ignored backups or transcripts.
 
@@ -18,8 +18,8 @@ diagnostics, identities, raw ACPI tables, ignored backups or transcripts.
 - Latest correction supersedes earlier restore/auto rules: remove the
   Performance-on-AC switch. Performance is manual and requires AC+>40%; retire
   it to Standard on restart, unplugging or below40%. Reconnect does not restore.
-- Keep Battery Care/24h full charge, touchpad confirmation, Fn mode, keyboard
-  idle timeout. No requested-limit row, brightness slider, microphone or remaps.
+- Battery Care/24h charging are removed; keep touchpad confirmation, Fn mode
+  and keyboard idle timeout. No requested-limit row, brightness slider, microphone or remaps.
 - Keep AsusSMC upstream version unchanged; no required boot arguments.
 - No desktop control, installation, kext loading or live EFI edits authorized.
 
@@ -165,30 +165,29 @@ Performance note is concise. The footer under the fan controls reads
 implemented in policy and documented in the README. Keyboard-light note keeps only: “The keyboard light returns to its
 previous level when you resume using the computer.” No layout redesign.
 
-## Pending charging-inhibit request
+## 1.2.0 focused release and documentation
 
-User asks for AlDente-like behavior: stop charging at80% while continuing to
-use the adapter, without forced battery discharge. Existing80/100 request still
-has no verified physical enforcement. No charging-inhibit implementation added
-in1.1.7. Do not claim Battery Care fixed or equate a request cache with charging.
+User requested a short product README, consistent versioning, trailing/right
+loading indicators and the prefix “Performance mode requires:”. Both READMEs
+are now product-oriented; driver/architecture details are in the developer guide
+and credits in docs/CREDITS.md. Product README includes a native offscreen UI
+screenshot with fixture data. Do not turn them back into debugging transcripts.
+README headings/links have no hardcoded app release version. VERSION drives
+pane metadata, CLI and agent; both binaries support --version and checks compare
+all three. AsusSMC remains upstream1.4.1 / API2 / feature revision4.
 
-AlDente's published Helper.swift uses AppleSMC CH0B0/2 (and legacy BCLM for
-limits). Inspected VirtualSMC/SMCBatteryManager source contains no CH0B/BCLM
-backend. Copying that key cannot control the ASUS hardware. Saved DSDT exposes
-RSOC0x00120057 -> SRSC -> WEBC(6,2,buffer); its known80/100 calls acknowledge
-queueing, not actual enforcement. DSTS reads flags via REBC(5,2), not a verified
-numeric threshold. Linux asus-wmi likewise caches its requested threshold.
-DSDT SRSC has a special128 -> [80,1] encoding, whose extra flag semantics remain
-unknown; do not label it inhibit or write it speculatively. BCHG/CHGS are status
-reads, not charge enable setters. No verified immediate ASUS inhibit interface
-has been found. No fake SMC charge-control key or arbitrary-register API added.
+Latest user instruction removes Battery Care entirely, superseding the prior
+AlDente-like request. No further charging work unless asked again. Pane section,
+24h option, CLI commands and agent charging policies are removed. Defaults and
+preference reads drop retired fields; old charging intents/failures are cleared.
+Opening the updated pane migrates/restarts or removes an older charge-only
+helper. New clients reject charge device commands before opening a service.
+Legacy kernel endpoints remain for older binaries; no EFI/kext change required.
+Tests verify stale settings cannot keep an agent alive or send charging writes,
+cleanup preserves maintained-control failures, and native spinners sit right.
 
-Latest read-only snapshot was71% on battery, negative current, no AC attached;
-it cannot verify behavior while charging past80%. User confirmed AlDente is only a behavior reference; it has not been shown
-to inhibit charging on this laptop. No
-normal-user firmware command was run from the sandbox, and the earlier denied
-write was not retried through another route. Next hardware work needs a proven
-ASUS command path and actual charging-current observations, not more UI polish.
+No installation, live preference/service changes, firmware writes or EFI edits
+were performed. User will install and test the new pane.
 
 ## Driver source and build
 
@@ -199,7 +198,7 @@ No published GitHub fork exists; do not claim one. Full diff is exported as
 Upstream MIT notices, identifier `com.hieplpvip.AsusSMC`, service and filename
 remain. Both MODULE_VERSION and CURRENT_PROJECT_VERSION stay upstream1.4.1.
 Settings API2 / feature revision4 identify added features, independently of
-ASUS Control1.1.8. MacKernelSDK/Lilu/VirtualSMC dependencies are pinned.
+ASUS Control (VERSION). MacKernelSDK/Lilu/VirtualSMC dependencies are pinned.
 
 No settings/fan boot arguments required with this new driver. Cached DSDT bytes
 match conservative signatures for the known RPM, thermal and Fn wiring, not
@@ -222,7 +221,8 @@ ChargeLimitRequested is an acknowledgement cache. Saved DSDT SRSC calls WEBC:
 WEBC returns1 after queueing EC bytes, without checking eventual charge-limit
 enforcement. User confirms charging continued past80%. Context refresh is fixed,
 but actual enforcement remains unverified. Do not claim it physically fixed or
-guess undocumented0x80 encodings/registers. Test with charger connected over80%.
+guess undocumented0x80 encodings/registers. Charging controls are now retired;
+do not resume investigation unless the user asks.
 
 Fn0x00100023 accepts exactDSTS10000/10001. On this profile, DEVS0 means
 printed hotkeys and1 means F1–F12. DEVS returns1 even
@@ -238,6 +238,6 @@ physical input behavior. Keep source publication separate from live deployment.
 
 Copyright note: no AlDente code, UI artwork or branding was copied. Its current
 repository LICENSE is an evaluation agreement, not blanket reuse permission.
-Implement ASUS charging control independently; any later source reuse needs
+Charging support is retired. Any later source reuse needs
 license-specific review and required notices. The feature idea is a reference,
 not permission to copy its expression.

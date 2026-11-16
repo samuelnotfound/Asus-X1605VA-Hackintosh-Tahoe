@@ -2,12 +2,12 @@
 #import "Policy.h"
 
 NSDictionary *AsusDefaultPreferences(void) {
-    return @{@"FanManaged":@NO, @"ManualProfile":@0, @"BatteryManaged":@NO, @"BatteryCare":@YES, @"FullChargeUntil":@0,
+    return @{@"FanManaged":@NO, @"ManualProfile":@0,
         @"FnManaged":@NO, @"FnHotkeys":@YES,
         @"BacklightSleepMode":@0, @"BacklightTimeout":@60};
 }
 BOOL AsusNeedsAgent(NSDictionary *p) {
-    return [p[@"FanManaged"] boolValue] || [p[@"BatteryManaged"] boolValue] || [p[@"FnManaged"] boolValue] ||
+    return [p[@"FanManaged"] boolValue] || [p[@"FnManaged"] boolValue] ||
         [p[@"BacklightSleepMode"] integerValue] != 0;
 }
 NSInteger AsusEffectiveProfile(NSDictionary *p, NSDictionary *system) {
@@ -32,7 +32,7 @@ static BOOL performanceActive(NSDictionary *h) {
 }
 NSDictionary *AsusFanSessionPreferences(NSDictionary *p, NSDictionary *h, NSDictionary *system, NSDictionary *state) {
     NSMutableDictionary *next = [p mutableCopy];
-    [next removeObjectForKey:@"AutoPerformanceOnAC"];
+    [next removeObjectsForKeys:@[@"AutoPerformanceOnAC",@"BatteryManaged",@"BatteryCare",@"FullChargeUntil"]];
     if (![p[@"FanManaged"] boolValue] || [p[@"ManualProfile"] integerValue] != 2) return next;
     NSString *boot = h[@"BootSessionID"];
     BOOL restarted = boot && ![state[@"FanBootSessionID"] isEqual:boot];
@@ -47,11 +47,17 @@ NSDictionary *AsusFanSessionPreferences(NSDictionary *p, NSDictionary *h, NSDict
     if (restarted || unplugged || low) next[@"ManualProfile"] = @0;
     return next;
 }
-NSString *AsusChargePolicyContext(NSDictionary *p, NSDictionary *h, NSDictionary *system, NSTimeInterval now) {
-    BOOL temporary = [p[@"BatteryCare"] boolValue] && [p[@"FullChargeUntil"] doubleValue] > now;
-    NSInteger limit = [p[@"BatteryCare"] boolValue] && !temporary ? 80 : 100;
-    return [NSString stringWithFormat:@"charge:%ld:driver:%@:ac:%@", (long)limit,
-        h[@"DriverSessionID"] ?: h[@"DriverRegistryEntryID"] ?: @"unknown", system[@"PowerSourceKnown"] ? system[@"ACPower"] : @"unknown"];
+void AsusRetireChargingState(NSMutableDictionary *state) {
+    [state removeObjectForKey:@"ChargeIntent"];
+    NSMutableDictionary *failures=[state[@"FailedFamilies"] mutableCopy] ?: [NSMutableDictionary dictionary];
+    NSString *retired=failures[@"ChargeIntent"];
+    [failures removeObjectForKey:@"ChargeIntent"];state[@"FailedFamilies"]=failures;
+    NSMutableDictionary *contexts=[state[@"FailedFamilyContexts"] mutableCopy] ?: [NSMutableDictionary dictionary];
+    [contexts removeObjectForKey:@"ChargeIntent"];state[@"FailedFamilyContexts"]=contexts;
+    if(retired && [state[@"Error"] isEqual:retired]) {
+        if(failures.count)state[@"Error"]=failures.allValues.firstObject;
+        else[state removeObjectForKey:@"Error"];
+    }
 }
 NSString *AsusFnPolicyContext(NSDictionary *p, NSDictionary *h) {
     return [NSString stringWithFormat:@"fn:%@:semantics:1:driver:%@", [p[@"FnHotkeys"] boolValue] ? @"hotkeys" : @"functions",
@@ -105,14 +111,7 @@ NSArray<NSDictionary *> *AsusPolicyActions(NSDictionary *p, NSDictionary *h,
     NSDictionary *system, NSDictionary *state, NSTimeInterval now) {
     if (![h[@"DeviceControlAllowed"] boolValue]) return @[];
     NSMutableArray *actions = [NSMutableArray array];
-    if ([p[@"BatteryManaged"] boolValue] && [h[@"BatteryCareAvailable"] boolValue]) {
-        BOOL care = [p[@"BatteryCare"] boolValue];
-        BOOL temporary = care && [p[@"FullChargeUntil"] doubleValue] > now;
-        NSInteger limit = care && !temporary ? 80 : 100;
-        NSString *intent = AsusChargePolicyContext(p, h, system, now);
-        if (![state[@"ChargeIntent"] isEqual:intent] || [h[@"ChargeLimitRequested"] integerValue] != limit)
-            [actions addObject:@{@"Kind":@"device", @"Value":@(limit == 80 ? 1 : 2), @"IntentKey":@"ChargeIntent", @"Intent":intent}];
-    }
+    (void)now;
     if ([p[@"FanManaged"] boolValue] && [h[@"ThermalProfileValid"] boolValue] && [system[@"PowerSourceKnown"] boolValue]) {
         NSMutableDictionary *eligibility = [system mutableCopy];
         eligibility[@"PerformanceActive"] = @(performanceActive(h));
@@ -160,8 +159,7 @@ static BOOL matches(NSDictionary *action, NSDictionary *hardware) {
     uint32_t value = [action[@"Value"] unsignedIntValue];
     if ([action[@"Kind"] isEqual:@"keyboard"])
         return [hardware[@"KeyboardReadingValid"] boolValue] && [hardware[@"KeyboardPercent"] unsignedIntValue] == value;
-    if (value <= 2) return [hardware[@"ChargeLimitRequested"] integerValue] == (value == 1 ? 80 : 100);
-    if (value <= 4) return [hardware[@"FnLockAvailable"] boolValue] && [hardware[@"FnLockHotkeys"] boolValue] == (value == 3);
+    if (value == 3 || value == 4) return [hardware[@"FnLockAvailable"] boolValue] && [hardware[@"FnLockHotkeys"] boolValue] == (value == 3);
     if (value >= 7 && value <= 9)
         return [hardware[@"ThermalProfileValid"] boolValue] && [hardware[@"ThermalProfile"] unsignedIntValue] == value - 7 &&
             [hardware[@"FanRequestedMode"] integerValue] == 0;
@@ -197,7 +195,7 @@ BOOL AsusExecutePolicyActions(NSArray<NSDictionary *> *actions, NSMutableDiction
         }
         if (!confirmed) {
             uint32_t value = [action[@"Value"] unsignedIntValue];
-            NSString *setting = [kind isEqual:@"keyboard"] ? @"the keyboard-light level" : value <= 2 ? @"the charging limit" : value <= 4 ? @"the function-key mode" : value == 10 ? @"Full Speed" : value >= 7 && value <= 9 ? @[@"Standard", @"Whisper", @"Performance"][value - 7] : @"the requested setting";
+            NSString *setting = [kind isEqual:@"keyboard"] ? @"the keyboard-light level" : value <= 4 ? @"the function-key mode" : value == 10 ? @"Full Speed" : value >= 7 && value <= 9 ? @[@"Standard", @"Whisper", @"Performance"][value - 7] : @"the requested setting";
             if (error) *error = [NSError errorWithDomain:@"com.samuelnotfound.AsusControl.Policy" code:9
                 userInfo:@{NSLocalizedDescriptionKey:[NSString stringWithFormat:@"Firmware acknowledged %@, but readback did not confirm it. Choose Try Again to reapply it.", setting]}];
             return NO;

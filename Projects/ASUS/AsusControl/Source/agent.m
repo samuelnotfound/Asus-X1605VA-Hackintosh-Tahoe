@@ -8,9 +8,13 @@
 #import <IOKit/ps/IOPowerSources.h>
 #include <signal.h>
 #include <unistd.h>
+#include <stdio.h>
+#include <string.h>
 static dispatch_source_t wakeSource;
 static void powerChanged(void *context) { (void)context; CFRunLoopStop(CFRunLoopGetMain()); }
-int main(void) {
+int main(int argc, const char **argv) {
+    if(argc==2 && !strcmp(argv[1],"--version")) { puts(ASUS_CONTROL_VERSION); return 0; }
+    if(argc!=1) { fputs("Usage: asuscontrol-agent [--version]\n",stderr); return 2; }
     @autoreleasepool {
         signal(SIGUSR1,SIG_IGN);
         wakeSource=dispatch_source_create(DISPATCH_SOURCE_TYPE_SIGNAL,SIGUSR1,0,dispatch_get_main_queue());

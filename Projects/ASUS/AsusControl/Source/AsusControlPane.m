@@ -35,7 +35,7 @@
     _active = YES; _refreshStopped = NO; _lastError = nil; _policyErrorRevision = nil;
     NSDictionary *state = AsusReadAgentState();
     // Upgrade an already opted-in service when the updated pane is opened.
-    if (AsusNeedsAgent(_preferences) && ![state[@"Version"] isEqual:@ASUS_CONTROL_VERSION])
+    if ((AsusNeedsAgent(_preferences) || state[@"ChargeIntent"] || state[@"FailedFamilies"][@"ChargeIntent"]) && ![state[@"Version"] isEqual:@ASUS_CONTROL_VERSION])
         [self savePreferences:_preferences];
     else [self refresh];
     __weak typeof(self) weakSelf = self;
@@ -73,8 +73,6 @@
     NSMutableDictionary *preferences = [_preferences mutableCopy] ?: [AsusDefaultPreferences() mutableCopy];
     if (![preferences[@"FnManaged"] boolValue] && _hardware[@"FnLockHotkeys"])
         preferences[@"FnHotkeys"] = _hardware[@"FnLockHotkeys"];
-    if (![preferences[@"BatteryManaged"] boolValue])
-        preferences[@"BatteryCare"] = @([_hardware[@"ChargeLimitRequested"] integerValue] == 80);
     if (![preferences[@"FanManaged"] boolValue])
         preferences[@"ManualProfile"] = [_hardware[@"FanRequestedMode"] integerValue] == 1 ? @3 : _hardware[@"ThermalProfile"] ?: @0;
     NSString *message = @""; BOOL failed = NO, loading = _busy;
@@ -165,11 +163,6 @@
         NSInteger profile = [value boolValue] ? 3 : [_hardware[@"ThermalProfile"] integerValue];
         if(profile < 0 || profile > 3) profile = 0;
         preferences[@"ManualProfile"] = @(profile); preferences[@"FanManaged"] = @YES;
-    } else if ([key isEqual:@"BatteryCare"]) {
-        preferences[@"BatteryManaged"] = @YES; preferences[key] = @([value boolValue]); preferences[@"FullChargeUntil"] = @0;
-    } else if ([key isEqual:@"FullCharge"]) {
-        preferences[@"BatteryManaged"] = @YES; preferences[@"BatteryCare"] = @YES;
-        preferences[@"FullChargeUntil"] = @([value boolValue] ? NSDate.date.timeIntervalSince1970 + 86400 : 0);
     } else if ([key isEqual:@"FnHotkeys"]) {
         preferences[@"FnManaged"] = @YES; preferences[key] = @([value boolValue]);
     } else if ([key isEqual:@"BacklightSleepMode"]) {
@@ -178,7 +171,7 @@
         if (![@[@30,@60,@180,@300,@600,@900] containsObject:@(number)]) return; preferences[key] = @(number);
     } else return;
     NSString *family=[@[@"QuickProfile",@"ManualProfile",@"FullSpeed"] containsObject:key] ? @"ThermalIntent" :
-        [key isEqual:@"FnHotkeys"] ? @"FnIntent" : [@[@"BatteryCare",@"FullCharge"] containsObject:key] ? @"ChargeIntent" : @"keyboard";
+        [key isEqual:@"FnHotkeys"] ? @"FnIntent" : @"keyboard";
     [self savePreferences:preferences family:family control:key value:value];
 }
 - (void)retrySettings { _refreshStopped = NO; [self savePreferences:_preferences]; }

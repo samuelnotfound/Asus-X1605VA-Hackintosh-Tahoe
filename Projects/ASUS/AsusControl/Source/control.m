@@ -8,7 +8,7 @@
 #include <string.h>
 
 static int usage(void) {
-    fputs("Usage: asusctl status | refresh | profile standard|whisper|performance | fan auto|full | keyboard 0..100 | device charge-80|charge-100|fn-hotkeys|fn-keys|touchpad-on|touchpad-off|standard|whisper|performance|full-speed|automatic | service remove | --version\n", stderr);
+    fputs("Usage: asusctl status | refresh | profile standard|whisper|performance | fan auto|full | keyboard 0..100 | device fn-hotkeys|fn-keys|touchpad-on|touchpad-off|standard|whisper|performance|full-speed|automatic | service remove | --version\n", stderr);
     return 2;
 }
 
@@ -36,11 +36,12 @@ int main(int argc, const char **argv) {
             puts("Automatic settings service removed."); return 0;
         }
         if (!strcmp(argv[1], "device")) {
-            NSArray *names = @[@"charge-80", @"charge-100", @"fn-hotkeys", @"fn-keys", @"touchpad-on", @"touchpad-off", @"standard", @"whisper", @"performance", @"full-speed", @"automatic"];
-            NSUInteger index = [names indexOfObject:[NSString stringWithUTF8String:argv[2]]];
-            if (index == NSNotFound) return usage();
+            NSDictionary *commands = @{@"fn-hotkeys":@3,@"fn-keys":@4,@"touchpad-on":@5,@"touchpad-off":@6,
+                @"standard":@7,@"whisper":@8,@"performance":@9,@"full-speed":@10,@"automatic":@11};
+            NSNumber *command = commands[[NSString stringWithUTF8String:argv[2]]];
+            if (!command) return usage();
             NSError *error = nil;
-            if (!AsusControlSendDeviceCommand((uint32_t)index + 1, &error)) {
+            if (!AsusControlSendDeviceCommand(command.unsignedIntValue, &error)) {
                 fprintf(stderr, "%s\n", error.localizedDescription.UTF8String); return 1;
             }
             puts("Firmware accepted the request. Read back state to confirm it."); return 0;

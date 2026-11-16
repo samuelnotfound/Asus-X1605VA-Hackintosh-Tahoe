@@ -28,12 +28,11 @@ int main(int argc,const char **argv) {
     NSBundle *bundle=[NSBundle bundleWithPath:[NSString stringWithUTF8String:argv[1]]];NSError *error=nil;
     assert([bundle loadAndReturnError:&error]);
     NSPreferencePane *pane=[[bundle.principalClass alloc]initWithBundle:bundle];NSView *view=[pane loadMainView];
-    [pane setValue:@{@"AsusSMC-Version":@"1.1.0",@"DeviceControlAllowed":@YES,@"FanReadingValid":@YES,@"FanRPM":@2600,
-        @"ThermalProfileValid":@YES,@"ThermalProfile":@0,@"FanRequestedMode":@0,@"BatteryCareAvailable":@YES,
-        @"ChargeLimitRequested":@80,@"FnLockAvailable":@YES,@"FnLockHotkeys":@YES,@"KeyboardControlAvailable":@YES,
+    [pane setValue:@{@"AsusSMC-Version":@"1.4.1",@"DeviceControlAllowed":@YES,@"FanReadingValid":@YES,@"FanRPM":@2600,
+        @"ThermalProfileValid":@YES,@"ThermalProfile":@0,@"FanRequestedMode":@0,@"FnLockAvailable":@YES,@"FnLockHotkeys":@YES,@"KeyboardControlAvailable":@YES,
         @"TrackpadControlAvailable":@YES,@"TrackpadEnabled":@YES} forKey:@"hardware"];
     [pane setValue:@{@"ACPower":@YES,@"PowerSourceKnown":@YES,@"BatteryKnown":@YES,@"BatteryPercent":@75} forKey:@"system"];
-    [pane setValue:@{@"FanManaged":@YES,@"ManualProfile":@0,@"BatteryManaged":@YES,@"BatteryCare":@YES,@"BacklightSleepMode":@1,
+    [pane setValue:@{@"FanManaged":@YES,@"ManualProfile":@0,@"BacklightSleepMode":@1,
         @"BacklightTimeout":@60,@"Revision":@"fixture"} forKey:@"preferences"];
     [pane setValue:@{@"Revision":@"fixture",@"Result":@"applied"} forKey:@"agentState"];
     [pane performSelector:@selector(displayStatus)];
@@ -51,6 +50,10 @@ int main(int argc,const char **argv) {
             snapshot(container,[[NSString stringWithUTF8String:argv[2]]stringByAppendingPathComponent:[NSString stringWithFormat:@"Pane-%@-%@.png",width,theme]]);
         }
     }
+    // Neutral product screenshot, separate from tinted-host regression fixtures.
+    container.layer.backgroundColor=[NSColor colorWithCalibratedWhite:0.12 alpha:1].CGColor;
+    [window setContentSize:NSMakeSize(660,1000)];
+    snapshot(container,[[NSString stringWithUTF8String:argv[2]]stringByAppendingPathComponent:@"ASUS-Control.png"]);
     [pane setValue:@{@"ACPower":@NO,@"PowerSourceKnown":@YES,@"BatteryKnown":@YES,@"BatteryPercent":@75} forKey:@"system"];
     [pane performSelector:@selector(displayStatus)];
     [window setContentSize:NSMakeSize(660,1000)];
@@ -65,9 +68,9 @@ int main(int argc,const char **argv) {
         NSProgressIndicator *indicator=indicators.firstObject;
         assert(indicator.isIndeterminate && indicator.style==NSProgressIndicatorStyleSpinning);
         assert(fabs(indicator.bounds.size.width-16)<1 && fabs(indicator.bounds.size.height-16)<1);
-        if([control isEqual:@"QuickProfile"]) {
-            NSRect rect=[indicator convertRect:indicator.bounds toView:view];assert(NSMidX(rect)>440);
-        }
+        NSRect rect=[indicator convertRect:indicator.bounds toView:view];
+        assert(NSMidX(rect)>view.bounds.size.width*0.8); // Trailing side of every control/card.
+
         snapshot(container,[[NSString stringWithUTF8String:argv[2]]stringByAppendingPathComponent:[NSString stringWithFormat:@"Pane-Loading-%@.png",control]]);
         [pane setValue:@NO forKey:@"busy"];
         [pane performSelector:@selector(displayStatus)];settle(view);assert(spinners(view).count==0);
