@@ -78,7 +78,7 @@ int main(int argc,const char **argv) {
     // Each card owns one matching lower-right spinner, positioned in a 2×2 grid.
     [pane setValue:@{@"ACPower":@YES,@"PowerSourceKnown":@YES,@"BatteryKnown":@YES,@"BatteryPercent":@75} forKey:@"system"];
     NSPoint positions[4];unsigned i=0;
-    for(NSNumber *profile in @[@2,@0,@1,@3]) {
+    for(NSNumber *profile in @[@3,@2,@0,@1]) {
         [pane setValue:@YES forKey:@"busy"];[pane setValue:@"QuickProfile" forKey:@"pendingControl"];
         [pane setValue:profile forKey:@"pendingValue"];[pane performSelector:@selector(displayStatus)];settle(view);
         NSArray *indicators=spinners(view);assert(indicators.count==1);

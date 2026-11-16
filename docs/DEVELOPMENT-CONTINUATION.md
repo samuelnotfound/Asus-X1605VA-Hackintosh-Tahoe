@@ -1,14 +1,14 @@
 # ASUS Control continuation — 2026-11-15
 
 Public repository `samuelnotfound/Asus-X1605VA-Hackintosh-Tahoe`.
-Project `Projects/ASUS/AsusControl`, pane/CLI/agent version in VERSION (now1.2.1). Keep software names
+Project `Projects/ASUS/AsusControl`, pane/CLI/agent version in VERSION (now1.2.2). Keep software names
 broad. Only X1605VA BIOS305 wiring is currently profiled. Do not publish private
 diagnostics, identities, raw ACPI tables, ignored backups or transcripts.
 
 ## Current user decisions
 
 - One transparent native SwiftUI grouped scrolling form; no tabs/dashboard.
-- Use four large cards in a 2×2 grid (Performance/Standard, Whisper/Full Speed);
+- Use four large cards in a 2×2 grid (Full Speed/Performance, Standard/Whisper);
   Full Speed replaces the separate switch. Keep the fan-profile cards and use the user's Windows description
   text: Dynamic Performance maximizes cooling for demanding tasks, Standard
   dynamically selects fan speed for everyday tasks, Whisper minimizes noise.
@@ -252,3 +252,12 @@ requires known AC power, and choosing any normal profile returns to automatic
 firmware regulation. Existing QuickProfile=3 executes Full Speed; no new
 firmware commands, policy changes or driver update. Removed the separate
 Full Speed switch. Offscreen resizing/loading fixtures cover the new grid.
+
+## 1.2.2 card order and requirements
+
+Latest card order is Full Speed/Performance above Standard/Whisper. Shared
+requirement note names both modes: both need AC; only Performance additionally
+requires more than40% battery. Removed the duplicate AC sentence from the Full
+Speed card. Full Speed description uses the user’s reference: “Run at full
+speed and enjoy the ultimate performance experience.” No eligibility, firmware
+or policy changes.

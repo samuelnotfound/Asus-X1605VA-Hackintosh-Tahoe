@@ -106,16 +106,16 @@ private struct SettingsScreen: View {
             Section {
                 VStack(spacing:12) {
                     HStack(spacing:12) {
+                        profileCard(3,title:"Full Speed",symbol:"fan.fill",detail:"Run at full speed and enjoy the ultimate performance experience.")
                         profileCard(2,title:"Performance",symbol:"speedometer",detail:"Dynamically maximizes cooling performance for demanding tasks.")
-                        profileCard(0,title:"Standard",symbol:"fan",detail:"Dynamically selects the best fan speed for everyday tasks.")
                     }
                     HStack(spacing:12) {
+                        profileCard(0,title:"Standard",symbol:"fan",detail:"Dynamically selects the best fan speed for everyday tasks.")
                         profileCard(1,title:"Whisper",symbol:"leaf",detail:"Dynamically minimizes fan speed for the quietest operation.")
-                        profileCard(3,title:"Full Speed",symbol:"fan.fill",detail:"Runs the fan at full speed. Requires AC power.")
                     }
                 }.listRowInsets(EdgeInsets(top:0,leading:0,bottom:0,trailing:0)).listRowBackground(Color.clear)
             } header: { Text("Fan Profile") } footer: {
-                Text("Performance mode requires: AC power and more than 40% battery.")
+                Text("Full Speed and Performance modes require: AC power. Performance also requires more than 40% battery.")
                     .fixedSize(horizontal:false,vertical:true)
             }
             Section {

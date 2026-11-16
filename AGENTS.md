@@ -11,7 +11,7 @@ Read `docs/DEVELOPMENT-CONTINUATION.md` before changing this repository.
 - Use native SwiftUI Form with grouped rows, leading labels and trailing
   controls, following the macOS Appearance/Desktop & Dock references. Avoid
   duplicate fan controls; fit the host size and use one scrolling form. Restore
-  a 2×2 card grid: Performance/Standard, then Whisper/Full Speed.
+  a 2×2 card grid: Full Speed/Performance, then Standard/Whisper.
   Full Speed replaces its separate switch; disable it without AC. One pane, no tabs, dashboard,
   profile-switching menu, per-source profile pickers or Low Power Mode rules. The
   former AutoPerformanceOnAC switch is removed and its saved flag ignored.
@@ -60,7 +60,8 @@ Read `docs/DEVELOPMENT-CONTINUATION.md` before changing this repository.
   pane/CLI/helper source of truth; upstream AsusSMC version remains unchanged.
 - Loading indicators belong on the trailing/right side of switches and menus;
   fan-card indicators remain lower-right. Requirement note starts with
-  “Performance mode requires:”.
+  “Full Speed and Performance modes require:”; AC applies to both,
+  more than40% battery applies only to Performance.
 - Keep the original AsusSMC identity/license. Export driver source changes from
   its separate checkout against pinned upstream; don't require a published fork.
 - Queue hardware operations on the driver workloop. Property handlers only
