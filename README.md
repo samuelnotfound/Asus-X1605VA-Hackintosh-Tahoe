@@ -30,7 +30,8 @@ For the **i5-13500H and i9-13900H** variants. ASUS Control currently targets **B
 1. Disable **Secure Boot**, **Fast Boot** and **VMD** in BIOS.
 2. Configure your own SMBIOS identity and keep a recovery EFI.
 3. Follow the [installation guide](docs/INSTALL.md) and [graphics guide](docs/ASUS-GRAPHICS.md).
-4. Build [ASUS Control](Projects/ASUS/AsusControl#build-and-install) for device settings.
+4. [Block macOS updates](https://github.com/DrDonk/Tanoe).
+5. Build [ASUS Control](Projects/ASUS/AsusControl#build-and-install) for device settings.
 
 Graphics patches, the preference pane and the EFI are updated separately. Each
 project's README contains its build instructions and version source.
