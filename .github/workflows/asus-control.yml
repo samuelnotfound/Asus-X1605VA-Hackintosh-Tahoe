@@ -22,3 +22,20 @@ jobs:
         run: bash Projects/ASUS/AsusControl/test.sh
       - name: Build and test the matching AsusSMC source
         run: bash Projects/ASUS/AsusControl/build-driver.sh
+      - name: Package ASUS Control and AsusSMC
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent \
+            "Projects/ASUS/AsusControl/build/ASUS Control.prefPane" \
+            "Projects/ASUS/AsusControl/build/ASUS-Control.prefPane.zip"
+          ditto -c -k --sequesterRsrc --keepParent \
+            "Projects/ASUS/AsusControl/build/AsusSMC.kext" \
+            "Projects/ASUS/AsusControl/build/AsusSMC.kext.zip"
+      - name: Upload downloadable builds
+        uses: actions/upload-artifact@v4
+        with:
+          name: ASUS-Control-and-AsusSMC-${{ github.run_number }}
+          path: |
+            Projects/ASUS/AsusControl/build/ASUS-Control.prefPane.zip
+            Projects/ASUS/AsusControl/build/AsusSMC.kext.zip
+          if-no-files-found: error
+          retention-days: 30
