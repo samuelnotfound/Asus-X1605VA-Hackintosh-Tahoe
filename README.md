@@ -22,8 +22,10 @@ For the **i5-13500H and i9-13900H** variants. ASUS Control currently targets **B
 | Intel Iris Xe graphics | Requires [graphics patches](docs/ASUS-GRAPHICS.md) |
 | Screen brightness | External utility; native slider unavailable |
 | Sleep, HDMI | Unavailable |
-| Wi-Fi, Bluetooth | Disabled in this configuration |
+| Wi-Fi, Bluetooth | Disabled via SSDT and Kernel Patch in this configuration, disable them and manually add MT7902 [Wi-Fi](https://github.com/jacksproject/MT7902-WiFi-Kext/actions/runs/45699785034) and [Bluetooth](https://github.com/jigyanshu-codes/SimpleMtkBtFw/releases/tag/v1.1.1) drivers. |
 | Fingerprint reader | Unsupported |
+
+WhateverXe is currently not working on this device somehow, acceleration does not work. I'll wait for their project to evolve and mature before I go back and fix the remaining issues in this config. 
 
 ## Get started
 
